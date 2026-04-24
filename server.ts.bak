@@ -1,0 +1,183 @@
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import dotenv from "dotenv";
+import Database from "better-sqlite3";
+
+dotenv.config();
+
+// Initialize Database
+const db = new Database("signalz.db");
+
+// Create tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS companies (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    industry TEXT,
+    website TEXT
+  );
+  
+  CREATE TABLE IF NOT EXISTS people (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    role TEXT,
+    company TEXT,
+    linkedin TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS company_notes (
+    company_id TEXT PRIMARY KEY,
+    notes TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+async function startServer() {
+  const app = express();
+  const PORT = 5000;
+
+  app.use(express.json());
+
+  // API routes
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
+
+  // Watchlist: Companies
+  app.get("/api/watchlist/companies", (req, res) => {
+    const companies = db.prepare("SELECT * FROM companies").all();
+    res.json(companies);
+  });
+
+  app.post("/api/watchlist/companies", (req, res) => {
+    const { id, name, industry, website } = req.body;
+    db.prepare("INSERT INTO companies (id, name, industry, website) VALUES (?, ?, ?, ?)").run(id, name, industry, website);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/watchlist/companies/:id", (req, res) => {
+    db.prepare("DELETE FROM companies WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  // Watchlist: People
+  app.get("/api/watchlist/people", (req, res) => {
+    const people = db.prepare("SELECT * FROM people").all();
+    res.json(people);
+  });
+
+  app.post("/api/watchlist/people", (req, res) => {
+    const { id, name, role, company, linkedin } = req.body;
+    db.prepare("INSERT INTO people (id, name, role, company, linkedin) VALUES (?, ?, ?, ?, ?)").run(id, name, role, company, linkedin);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/watchlist/people/:id", (req, res) => {
+    db.prepare("DELETE FROM people WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
+  // Company Notes
+  app.get("/api/notes/:companyId", (req, res) => {
+    const note = db.prepare("SELECT * FROM company_notes WHERE company_id = ?").get(req.params.companyId);
+    res.json(note || { company_id: req.params.companyId, notes: "" });
+  });
+
+  app.post("/api/notes/:companyId", (req, res) => {
+    const { notes } = req.body;
+    const companyId = req.params.companyId;
+    db.prepare(`
+      INSERT INTO company_notes (company_id, notes, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(company_id) DO UPDATE SET
+        notes = excluded.notes,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(companyId, notes);
+    res.json({ success: true });
+  });
+
+  // LinkedIn Profile Parsing Endpoint (Simulated without external APIs)
+  app.post("/api/linkedin/parse", async (req, res) => {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: "LinkedIn URL is required." });
+    }
+
+    try {
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Extract username from URL
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/').filter(Boolean);
+      const username = pathParts[pathParts.length - 1] || 'user';
+      
+      // Format name from username (e.g., john-doe -> John Doe)
+      const formattedName = username
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+
+      // Generate a realistic simulated profile
+      const simulatedProfile = {
+        full_name: formattedName,
+        headline: `Senior Executive | Driving Innovation at Top Tech`,
+        summary: `Experienced leader with a demonstrated history of working in the technology and services industry. Skilled in Strategy, Management, and Product Development. Strong professional with a focus on delivering value and driving growth.`,
+        experiences: [
+          {
+            title: "Vice President",
+            company: "Global Tech Corp",
+            starts_at: { year: 2020, month: 3, day: 1 },
+            ends_at: null,
+            description: "Leading strategic initiatives and overseeing product development across multiple regions."
+          },
+          {
+            title: "Director of Operations",
+            company: "Innovate Solutions",
+            starts_at: { year: 2015, month: 6, day: 1 },
+            ends_at: { year: 2020, month: 2, day: 28 },
+            description: "Managed daily operations and improved efficiency by 30%."
+          }
+        ],
+        education: [
+          {
+            school: "University of Technology",
+            degree_name: "Master of Business Administration",
+            field_of_study: "Business Administration and Management",
+            starts_at: { year: 2010, month: 9, day: 1 },
+            ends_at: { year: 2012, month: 5, day: 30 }
+          }
+        ],
+        profile_pic_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(formattedName)}&background=random&size=200`
+      };
+
+      res.json(simulatedProfile);
+    } catch (error: any) {
+      console.error("LinkedIn parsing error:", error);
+      res.status(500).json({ error: "Failed to parse LinkedIn profile. Please check the URL." });
+    }
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
