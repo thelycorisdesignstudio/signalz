@@ -817,20 +817,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <div className="space-y-5 max-w-4xl">
                         <div className="flex items-center gap-4 py-3 border-b border-white/10">
                           <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20">To:</span>
-                          <span className="text-sm font-bold">{searchResult.suggestedEmail?.recipient}</span>
+                          <span className="text-sm font-bold">{searchResult.outreach?.emails?.[0]?.recipientName || searchResult.outreach?.emails?.[0]?.recipientEmailGuess || searchResult.suggestedEmail?.recipient || ""}</span>
                         </div>
                         <div className="flex items-center gap-4 py-3 border-b border-white/10">
                           <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20">Subject:</span>
-                          <span className="text-sm font-bold">{searchResult.suggestedEmail?.subject}</span>
+                          <span className="text-sm font-bold">{searchResult.outreach?.emails?.[0]?.subject || searchResult.suggestedEmail?.subject || ""}</span>
                         </div>
                         <div className="flex items-start gap-4">
                           <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20 mt-1">Body:</span>
                           <div className="flex-1 bg-white/5 rounded-2xl p-6">
                             <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium text-slate-200">
-                              {searchResult.suggestedEmail?.body}
+                              {searchResult.outreach?.emails?.[0]?.body || searchResult.suggestedEmail?.body || ""}
                             </p>
                             <div className="mt-6 flex flex-wrap gap-3">
-                              <button onClick={() => navigator.clipboard.writeText(searchResult.suggestedEmail?.body)}
+                              <button onClick={() => navigator.clipboard.writeText(searchResult.outreach?.emails?.[0]?.body || searchResult.suggestedEmail?.body || "")}
                                 className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all">
                                 <Copy className="w-3 h-3" /> Copy Draft
                               </button>

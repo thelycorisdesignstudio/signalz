@@ -299,7 +299,12 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  setSequences(initialSequences);
  }
 
- if (data?.keyPeople?.[0]?.tailoredEmail) {
+ if (Array.isArray(data?.outreach?.emails) && data.outreach.emails.length > 0) {
+ const first = data.outreach.emails[0];
+ setEmailDraft(first.body || '');
+ setEmailSubject(first.subject || '');
+ setSelectedRecipientIndex(0);
+ } else if (data?.keyPeople?.[0]?.tailoredEmail) {
  setEmailDraft(data.keyPeople[0].tailoredEmail.body);
  setEmailSubject(data.keyPeople[0].tailoredEmail.subject);
  setSelectedRecipientIndex(0);
