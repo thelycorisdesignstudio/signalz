@@ -240,9 +240,16 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  };
 
  React.useEffect(() => {
- if (intelligence?.outreach_angles?.[0]?.draft) {
+ // Prefer new-schema outreach.emails[0] when intelligence arrives and editor is still empty
+ if (!emailDraft && Array.isArray(intelligence?.outreach?.emails) && intelligence.outreach.emails.length > 0) {
+ setEmailDraft(intelligence.outreach.emails[0].body || '');
+ setEmailSubject(intelligence.outreach.emails[0].subject || '');
+ return;
+ }
+ if (!emailDraft && intelligence?.outreach_angles?.[0]?.draft) {
  setEmailDraft(intelligence.outreach_angles[0].draft);
  }
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [intelligence]);
 
  const toggleStakeholder = (id: string) => {
@@ -278,20 +285,25 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  if (data?.keyPeople) {
  const initialSequences: Record<number, SequenceStep[]> = {};
  data.keyPeople.forEach((person: any, idx: number) => {
+ // Prefer outreach.emails[] matched by name, fallback to legacy tailoredEmail
+ const matched = Array.isArray(data?.outreach?.emails)
+ ? data.outreach.emails.find((e: any) => (e.recipientName || '').toLowerCase() === (person.name || '').toLowerCase())
+ : null;
+ const src = matched || (Array.isArray(data?.outreach?.emails) && idx < data.outreach.emails.length ? data.outreach.emails[idx] : null) || person.tailoredEmail;
  initialSequences[idx] = [
  {
  id: Math.random().toString(36).substr(2, 9),
  type: 'email',
  day: 1,
- subject: person.tailoredEmail?.subject || 'Connecting regarding Market Expansion',
- content: person.tailoredEmail?.body || 'I noticed your recent work and wanted to reach out...',
- status: 'ready'
+ subject: src?.subject || 'Connecting regarding strategic priorities',
+ content: src?.body || 'Email draft not available yet.',
+ status: src?.body ? 'ready' : 'draft'
  },
  {
  id: Math.random().toString(36).substr(2, 9),
  type: 'linkedin',
  day: 3,
- content: `Hi ${person.name.split(' ')[0]}, I'd love to connect and learn more about your work at ${companyName}.`,
+ content: `Hi ${(person.name || '').split(' ')[0]}, I would like to connect and learn more about your work at ${companyName}.`,
  status: 'draft'
  }
  ];
@@ -305,11 +317,11 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  setEmailSubject(first.subject || '');
  setSelectedRecipientIndex(0);
  } else if (data?.keyPeople?.[0]?.tailoredEmail) {
- setEmailDraft(data.keyPeople[0].tailoredEmail.body);
- setEmailSubject(data.keyPeople[0].tailoredEmail.subject);
+ setEmailDraft(data.keyPeople[0].tailoredEmail.body || '');
+ setEmailSubject(data.keyPeople[0].tailoredEmail.subject || '');
  setSelectedRecipientIndex(0);
  } else if (data?.suggestedEmail?.body) {
- setEmailDraft(data.suggestedEmail.body);
+ setEmailDraft(data.suggestedEmail.body || '');
  setEmailSubject(data.suggestedEmail.subject || '');
  }
  } catch (error) {
@@ -425,9 +437,15 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  const handleGenerateEmailDraft = async (stakeholder?: any, index?: number) => {
  if (index !== undefined) {
  setSelectedRecipientIndex(index);
- if (stakeholder?.tailoredEmail) {
- setEmailDraft(stakeholder.tailoredEmail.body);
- setEmailSubject(stakeholder.tailoredEmail.subject);
+ // Prefer outreach.emails match by name, fall back to index, then legacy tailoredEmail
+ const emails = intelligence?.outreach?.emails || [];
+ const matched = stakeholder?.name
+ ? emails.find((e: any) => (e.recipientName || '').toLowerCase() === stakeholder.name.toLowerCase())
+ : null;
+ const src = matched || emails[index] || stakeholder?.tailoredEmail;
+ if (src) {
+ setEmailDraft(src.body || '');
+ setEmailSubject(src.subject || '');
  }
  setActiveTab('outreach');
  return;
@@ -1065,10 +1083,12 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  </div>
  </div>
  <div className="text-right">
+ {person.influence && (
  <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${person.influence === 'High' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-blue-500/10 text-blue-500'}`}>
  {person.influence} Influence
  </span>
- <p className="text-[9px] text-slate-400 mt-1 italic">{person.focus}</p>
+ )}
+ <p className="text-[9px] text-slate-400 mt-1 italic">{person.focus || person.activity?.themes?.[0] || ''}</p>
  </div>
  </div>
  ))}
@@ -1512,12 +1532,15 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  <div key={index} className="space-y-3">
  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
  {index === 0 ? 'Primary Contact' : 'Stakeholder'} 
- <span className="ml-2 px-1.5 py-0.5 rounded bg-[#0071E3]/10 text-[#0071E3] text-[8px]">Rank #{person.priorityRank || (index + 1)}</span>
+ <span className="ml-2 px-1.5 py-0.5 rounded bg-[#0071E3]/10 text-[#0071E3] text-[8px]">#{person.priorityRank || (index + 1)}</span>
  {person.influence === 'High' && (
  <span className="bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded text-[8px]">High Influence</span>
  )}
  {person.influence === 'Medium' && (
  <span className="bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded text-[8px]">Medium Influence</span>
+ )}
+ {person.emailConfidence && person.emailConfidence !== 'unverified' && person.emailConfidence !== 'none' && (
+ <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[8px]">{person.emailConfidence} email</span>
  )}
  </h4>
  <div className="p-3 rounded-lg bg-slate-50 transition-all cursor-pointer hover:border-[#0071E3]/30 hover: group">
@@ -1556,6 +1579,11 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  </button>
  </div>
  {person.influence === 'High' && <CheckCircle2 className="w-5 h-5 text-emerald-500 ml-1"/>}
+ {person.email && (
+ <a href={`mailto:${person.email}`} onClick={(e) => e.stopPropagation()} className="ml-2 text-[9px] font-bold text-slate-500 truncate max-w-[140px] hover:text-[#0071E3]" title={person.email}>
+ {person.email}
+ </a>
+ )}
  </div>
  <AnimatePresence>
  {expandedStakeholders.has(person.name) && (
@@ -1573,18 +1601,33 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  </div>
  </div>
  <p className="text-xs text-slate-600 bg-white p-3 rounded-lg leading-relaxed border border-[#0071E3]/10 italic">
- "{person.hook || "No specific hook available. Focus on their strategic goals."}"
+ "{person.activity?.bestHook || person.hook || 'No specific hook available. Focus on their strategic goals.'}"
  </p>
  <div className="mt-3 grid grid-cols-2 gap-3">
  <div className="p-2 bg-slate-100 rounded ">
  <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Strategic Focus</p>
- <p className="text-[10px] font-medium">{person.focus}</p>
+ <p className="text-[10px] font-medium">{person.focus || (person.activity?.themes?.slice(0, 2).join(', ')) || 'Not available'}</p>
  </div>
  <div className="p-2 bg-slate-100 rounded ">
  <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Comm Style</p>
- <p className="text-[10px] font-medium">{person.style}</p>
+ <p className="text-[10px] font-medium">{person.communicationStyle || person.activity?.tone || person.style || 'Not available'}</p>
  </div>
  </div>
+ {Array.isArray(person.activity?.recentPosts) && person.activity.recentPosts.length > 0 && (
+ <div className="mt-3 p-2 bg-slate-100 rounded">
+ <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Recent Activity</p>
+ <ul className="space-y-1">
+ {person.activity.recentPosts.slice(0, 3).map((post: any, pi: number) => (
+ <li key={pi} className="text-[10px] text-slate-600">
+ {typeof post === 'string' ? post : (post?.title || post?.snippet || '')}
+ </li>
+ ))}
+ </ul>
+ </div>
+ )}
+ {Array.isArray(person.careerHistory) && person.careerHistory.length > 0 && (
+ <p className="mt-2 text-[9px] text-slate-500">Career: {person.careerHistory.slice(0, 2).map((c: any) => typeof c === 'string' ? c : c?.role || c?.company).filter(Boolean).join(' \u2192 ')}</p>
+ )}
  </div>
  </motion.div>
  )}
@@ -2179,11 +2222,11 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded uppercase">High Interest</span>
  </div>
  <p className="text-xs text-slate-600 mb-2">
- "{intelligence?.keyPeople?.[selectedRecipientIndex]?.name.split(' ')[0] || 'The stakeholder'}'s recent activity suggests a strong focus on {intelligence?.keyPeople?.[selectedRecipientIndex]?.focus || 'market growth'}, with specific interest in {intelligence?.techStack?.[0] || 'modern infrastructure'}."
+ "{intelligence?.keyPeople?.[selectedRecipientIndex]?.name?.split(' ')[0] || 'The stakeholder'}'s recent activity suggests a strong focus on {intelligence?.keyPeople?.[selectedRecipientIndex]?.focus || intelligence?.keyPeople?.[selectedRecipientIndex]?.activity?.themes?.[0] || 'their market'}, with specific interest in {intelligence?.techStack?.[0] || intelligence?.keyPeople?.[selectedRecipientIndex]?.activity?.themes?.[1] || 'modern infrastructure'}."
  </p>
  <div className="flex flex-wrap gap-2">
- <span className="text-[10px] px-2 py-1 bg-white rounded text-slate-500">Sentiment: {intelligence?.sentiment || 'Positive'}</span>
- <span className="text-[10px] px-2 py-1 bg-white rounded text-slate-500">Focus: {intelligence?.keyPeople?.[selectedRecipientIndex]?.focus || 'Strategic'}</span>
+ <span className="text-[10px] px-2 py-1 bg-white rounded text-slate-500">Sentiment: {intelligence?.company?.sentiment || intelligence?.sentiment || 'Neutral'}</span>
+ <span className="text-[10px] px-2 py-1 bg-white rounded text-slate-500">Focus: {intelligence?.keyPeople?.[selectedRecipientIndex]?.focus || intelligence?.keyPeople?.[selectedRecipientIndex]?.activity?.themes?.[0] || 'Strategic'}</span>
  </div>
  </div>
  </div>
@@ -2204,7 +2247,7 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  </div>
  <div>
  <p className="text-sm font-bold">{intelligence?.keyPeople?.[selectedRecipientIndex]?.name || 'Stakeholder'}'s Style</p>
- <p className="text-xs text-slate-500">{intelligence?.keyPeople?.[selectedRecipientIndex]?.style || 'Professional, data-driven'}</p>
+ <p className="text-xs text-slate-500">{intelligence?.keyPeople?.[selectedRecipientIndex]?.communicationStyle || intelligence?.keyPeople?.[selectedRecipientIndex]?.activity?.tone || intelligence?.keyPeople?.[selectedRecipientIndex]?.style || 'Professional, data-driven'}</p>
  </div>
  </div>
  <div className="grid grid-cols-2 gap-2">
@@ -2768,15 +2811,22 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  <h4 className="font-black text-sm text-[#1D1D1F] truncate">{person.name}</h4>
  <p className="text-xs text-[#0071E3] font-bold truncate">{person.title}</p>
  <div className="flex items-center gap-2 mt-1">
+ {person.influence && (
  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${person.influence === 'High' ? 'bg-[#0071E3]/10 text-[#0071E3]' : 'bg-slate-200 text-slate-500'}`}>
  {person.influence}
  </span>
- <span className="text-[9px] text-slate-400 font-bold">Rank #{person.priorityRank}</span>
+ )}
+ {person.priorityRank && (
+ <span className="text-[9px] text-slate-400 font-bold">#{person.priorityRank}</span>
+ )}
  </div>
  </div>
  </div>
- {person.hook && (
- <p className="mt-3 text-xs text-slate-500 leading-relaxed italic">"{person.hook}"</p>
+ {(person.activity?.bestHook || person.hook) && (
+ <p className="mt-3 text-xs text-slate-500 leading-relaxed italic">"{person.activity?.bestHook || person.hook}"</p>
+ )}
+ {person.email && (
+ <p className="mt-2 text-[10px] text-slate-500 font-medium truncate">{person.email}{person.emailConfidence ? <span className="ml-1 text-[9px] text-slate-400 uppercase tracking-widest">{person.emailConfidence}</span> : null}</p>
  )}
  {person.linkedin && person.linkedin !== 'N/A' && (
  <a href={person.linkedin} target="_blank"rel="noopener noreferrer"

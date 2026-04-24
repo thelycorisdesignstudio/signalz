@@ -284,6 +284,25 @@ export async function runResearch(params: ResearchParams): Promise<ResearchOutpu
     sourcesAttempted,
   };
 
+  // Fallback: if similarCompanies thin, synthesize 4 via a lightweight second AI call
+  let similarCompanies = synthesized.similarCompanies || [];
+  if (!Array.isArray(similarCompanies) || similarCompanies.length < 3) {
+    try {
+      const industry = synthesized.company?.industry || "";
+      const size = synthesized.company?.size || "";
+      const summary = (synthesized.company?.summary || "").slice(0, 400);
+      const simSys = "You are a B2B targeting analyst. Suggest 4 real companies that share this company's industry, scale, and buying profile. No em dashes. No emoji. Return JSON: {\"similarCompanies\":[{\"name\",\"industry\",\"whyApproach\"}]}. Only include real, recognizable companies.";
+      const simUser = "Target: " + company + "\nIndustry: " + industry + "\nSize: " + size + "\nSummary: " + summary + "\nReturn 4 distinct peers or comparable accounts a seller should approach next, with a short whyApproach (max 20 words).";
+      const simOut = await callAzureJson<{ similarCompanies: any[] }>(simSys, simUser, { maxTokens: 600, timeoutMs: 30000 });
+      if (Array.isArray(simOut?.similarCompanies) && simOut.similarCompanies.length > 0) {
+        similarCompanies = simOut.similarCompanies.slice(0, 6);
+        console.log("[researchService] similarCompanies synthesized fallback: " + similarCompanies.length);
+      }
+    } catch (e: any) {
+      console.log("[researchService] similarCompanies synthesis failed: " + e.message);
+    }
+  }
+
   // Compose final output
   const output: ResearchOutput = {
     company: {
@@ -311,7 +330,7 @@ export async function runResearch(params: ResearchParams): Promise<ResearchOutpu
     techStack: synthesized.techStack || [],
     citations: citations.all(),
     outreach: { emails: [] }, // populated by server endpoint
-    similarCompanies: synthesized.similarCompanies || [],
+    similarCompanies,
     interestingFacts: synthesized.interestingFacts || [],
     hiringTrends: synthesized.hiringTrends || [],
     fundingRounds: synthesized.fundingRounds || [],

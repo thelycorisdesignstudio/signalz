@@ -728,10 +728,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           <p className="text-[10px] font-black uppercase text-[#0071E3] tracking-widest mb-2 flex items-center gap-1">
                             <Zap className="w-3 h-3" /> Outreach Hook
                           </p>
-                          <p className="text-xs font-medium text-slate-600 leading-relaxed">"{person.hook}"</p>
+                          <p className="text-xs font-medium text-slate-600 leading-relaxed">"{person.activity?.bestHook || person.hook || 'Focus on their strategic priorities and recent activity.'}"</p>
                         </div>
-                        {person.focus && (
-                          <p className="mt-3 text-[10px] text-slate-400 font-bold">Focus: {person.focus}</p>
+                        {(person.focus || person.activity?.themes?.length > 0) && (
+                          <p className="mt-3 text-[10px] text-slate-400 font-bold">Focus: {person.focus || person.activity?.themes?.slice(0, 2).join(', ')}</p>
+                        )}
+                        {person.email && (
+                          <p className="mt-2 text-[10px] text-slate-500 font-medium truncate">{person.email} <span className="ml-1 text-[9px] text-slate-400 uppercase tracking-widest">{person.emailConfidence || ''}</span></p>
                         )}
                       </motion.div>
                     ))}
@@ -764,29 +767,35 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">AI-Powered Recommendations</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {searchResult.similarCompanies?.map((company: any, i: number) => (
-                        <div key={i} className="p-5 bg-[#f6f6f8] rounded-2xl hover:bg-[#0071E3]/5 transition-colors group">
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <h4 className="text-sm font-black text-[#1D1D1F] group-hover:text-[#0071E3] transition-colors">{company.name}</h4>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{company.industry}</p>
+                    {(searchResult.similarCompanies?.length || 0) > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {searchResult.similarCompanies.map((company: any, i: number) => (
+                          <div key={i} className="p-5 bg-[#f6f6f8] rounded-2xl hover:bg-[#0071E3]/5 transition-colors group">
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <h4 className="text-sm font-black text-[#1D1D1F] group-hover:text-[#0071E3] transition-colors">{company.name || 'Unknown'}</h4>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{company.industry || ''}</p>
+                              </div>
+                            </div>
+                            <p className="text-xs text-slate-500 leading-relaxed mb-4">{company.whyApproach || 'Similar profile to current target.'}</p>
+                            <div className="flex gap-2">
+                              <button onClick={() => addToLeads(company.name)}
+                                className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-xl transition-all ${leads.includes(company.name) ? 'bg-[#0071E3] text-white' : 'bg-white text-slate-600 hover:text-[#0071E3]'}`}>
+                                Lead
+                              </button>
+                              <button onClick={() => onSelectCompany(company.name)}
+                                className="flex-1 py-1.5 text-[10px] font-black uppercase bg-white rounded-xl text-slate-600 hover:text-[#0071E3] transition-all">
+                                Research
+                              </button>
                             </div>
                           </div>
-                          <p className="text-xs text-slate-500 leading-relaxed mb-4">{company.whyApproach}</p>
-                          <div className="flex gap-2">
-                            <button onClick={() => addToLeads(company.name)}
-                              className={`flex-1 py-1.5 text-[10px] font-black uppercase rounded-xl transition-all ${leads.includes(company.name) ? 'bg-[#0071E3] text-white' : 'bg-white text-slate-600 hover:text-[#0071E3]'}`}>
-                              Lead
-                            </button>
-                            <button onClick={() => onSelectCompany(company.name)}
-                              className="flex-1 py-1.5 text-[10px] font-black uppercase bg-white rounded-xl text-slate-600 hover:text-[#0071E3] transition-all">
-                              Research
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-8 bg-[#f6f6f8] rounded-2xl text-center">
+                        <p className="text-sm font-medium text-slate-500">No similar companies available yet. Try re-running research.</p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Outreach Email */}
@@ -817,17 +826,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <div className="space-y-5 max-w-4xl">
                         <div className="flex items-center gap-4 py-3 border-b border-white/10">
                           <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20">To:</span>
-                          <span className="text-sm font-bold">{searchResult.outreach?.emails?.[0]?.recipientName || searchResult.outreach?.emails?.[0]?.recipientEmailGuess || searchResult.suggestedEmail?.recipient || ""}</span>
+                          <span className="text-sm font-bold">
+                            {(() => {
+                              const e = searchResult.outreach?.emails?.[0];
+                              if (!e) return searchResult.suggestedEmail?.recipient || 'Recipient not identified';
+                              const parts = [e.recipientName, e.recipientTitle].filter(Boolean).join(', ');
+                              const addr = e.recipientEmailGuess || e.email;
+                              if (parts && addr) return parts + ' <' + addr + '>';
+                              return parts || addr || 'Recipient not identified';
+                            })()}
+                          </span>
                         </div>
                         <div className="flex items-center gap-4 py-3 border-b border-white/10">
                           <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20">Subject:</span>
-                          <span className="text-sm font-bold">{searchResult.outreach?.emails?.[0]?.subject || searchResult.suggestedEmail?.subject || ""}</span>
+                          <span className="text-sm font-bold">{searchResult.outreach?.emails?.[0]?.subject || searchResult.suggestedEmail?.subject || 'Subject not available'}</span>
                         </div>
                         <div className="flex items-start gap-4">
                           <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20 mt-1">Body:</span>
                           <div className="flex-1 bg-white/5 rounded-2xl p-6">
                             <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium text-slate-200">
-                              {searchResult.outreach?.emails?.[0]?.body || searchResult.suggestedEmail?.body || ""}
+                              {searchResult.outreach?.emails?.[0]?.body || searchResult.suggestedEmail?.body || 'Email draft not yet generated. Re-run research to produce a draft.'}
                             </p>
                             <div className="mt-6 flex flex-wrap gap-3">
                               <button onClick={() => navigator.clipboard.writeText(searchResult.outreach?.emails?.[0]?.body || searchResult.suggestedEmail?.body || "")}
