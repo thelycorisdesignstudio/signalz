@@ -607,6 +607,39 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  {activeTab === 'overview' && (
  <div className="grid grid-cols-12 gap-6">
  <div className="col-span-12 lg:col-span-8 space-y-6">
+ {/* Data Quality Banner (ground truth indicator) */}
+ {intelligence?.meta && (
+ <section className={`rounded-xl p-4 flex items-center justify-between ${
+ intelligence.meta.dataQuality === 'verified' ? 'bg-emerald-50 border border-emerald-200' :
+ intelligence.meta.dataQuality === 'partial' ? 'bg-amber-50 border border-amber-200' :
+ intelligence.meta.dataQuality === 'no_people_found' ? 'bg-red-50 border border-red-200' :
+ 'bg-slate-50 border border-slate-200'
+ }`}>
+ <div className="flex items-center gap-3">
+ {intelligence.meta.dataQuality === 'verified' ? <CheckCircle2 className="w-5 h-5 text-emerald-600"/> :
+ intelligence.meta.dataQuality === 'partial' ? <AlertTriangle className="w-5 h-5 text-amber-600"/> :
+ <Info className="w-5 h-5 text-slate-500"/>}
+ <div>
+ <p className="text-sm font-bold text-slate-900">
+ Data Quality: {String(intelligence.meta.dataQuality || 'unknown').replace(/_/g, ' ').toUpperCase()}
+ </p>
+ <p className="text-xs text-slate-600">
+ {intelligence.meta.peopleCount || 0} verified {(intelligence.meta.peopleCount || 0) === 1 ? 'person' : 'people'} - {intelligence.meta.sourcesCount || 0} citation{intelligence.meta.sourcesCount === 1 ? '' : 's'}
+ {intelligence.meta.lastVerified ? ' - verified ' + new Date(intelligence.meta.lastVerified).toLocaleDateString() : ''}
+ </p>
+ </div>
+ </div>
+ {Array.isArray(intelligence.meta.caveats) && intelligence.meta.caveats.length > 0 && (
+ <details className="text-xs">
+ <summary className="cursor-pointer text-slate-500 hover:text-slate-700">caveats ({intelligence.meta.caveats.length})</summary>
+ <ul className="mt-2 space-y-1 list-disc list-inside text-slate-600 max-w-xs">
+ {intelligence.meta.caveats.map((c: string, i: number) => (<li key={i}>{c}</li>))}
+ </ul>
+ </details>
+ )}
+ </section>
+ )}
+
  {/* Intelligence Summary */}
  <section className="bg-white rounded-xl overflow-hidden ">
  <div className="p-5 border-b flex justify-between items-center bg-slate-50/50">
@@ -657,6 +690,120 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  )}
  </div>
  </section>
+ {/* Key People Table (verified, evidence-backed) */}
+ {Array.isArray(intelligence?.keyPeople) && intelligence.keyPeople.length > 0 && (
+ <section className="bg-white rounded-xl overflow-hidden">
+ <div className="p-5 border-b flex justify-between items-center bg-slate-50/50">
+ <h3 className="font-bold flex items-center gap-2">
+ <Users className="w-5 h-5 text-[#0071E3]"/>
+ Key People
+ <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded uppercase tracking-widest">Evidence-Verified</span>
+ </h3>
+ <span className="text-xs text-slate-500">{intelligence.keyPeople.length} verified</span>
+ </div>
+ <div className="overflow-x-auto">
+ <table className="w-full text-sm">
+ <thead className="bg-slate-50/50">
+ <tr className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+ <th className="px-5 py-3">Name</th>
+ <th className="px-5 py-3">Title</th>
+ <th className="px-5 py-3">LinkedIn</th>
+ <th className="px-5 py-3">Email</th>
+ <th className="px-5 py-3">Best Hook</th>
+ </tr>
+ </thead>
+ <tbody>
+ {intelligence.keyPeople.map((person: any, i: number) => (
+ <tr key={i} className="border-t border-slate-100 hover:bg-slate-50/40">
+ <td className="px-5 py-3 font-bold text-slate-900">{person.name}</td>
+ <td className="px-5 py-3 text-slate-600">{person.title}</td>
+ <td className="px-5 py-3">
+ {person.linkedin ? (
+ <a href={person.linkedin} target="_blank" rel="noreferrer" className="text-[#0A66C2] hover:underline inline-flex items-center gap-1 text-xs">
+ <Linkedin className="w-3 h-3"/>
+ {person.linkedinStatus === 'verified' ? 'Verified' : 'View'}
+ </a>
+ ) : (
+ <span className="text-slate-400 text-xs italic">not found</span>
+ )}
+ </td>
+ <td className="px-5 py-3">
+ {person.email ? (
+ <div className="flex items-center gap-2">
+ <span className="text-xs font-mono text-slate-700">{person.email}</span>
+ <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+ person.emailConfidence === 'verified' ? 'bg-emerald-100 text-emerald-700' :
+ person.emailConfidence === 'high' ? 'bg-blue-100 text-blue-700' :
+ person.emailConfidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+ 'bg-slate-100 text-slate-500'
+ }`}>{person.emailConfidence}</span>
+ </div>
+ ) : (
+ <span className="text-slate-400 text-xs italic">-</span>
+ )}
+ </td>
+ <td className="px-5 py-3 text-xs text-slate-600 max-w-xs">
+ {person.activity?.bestHook ? (
+ <span className="italic">"{person.activity.bestHook.slice(0, 140)}"</span>
+ ) : person.evidence?.[0]?.snippet ? (
+ <span className="text-slate-400 line-clamp-2">{person.evidence[0].snippet.slice(0, 100)}...</span>
+ ) : (
+ <span className="text-slate-400">-</span>
+ )}
+ </td>
+ </tr>
+ ))}
+ </tbody>
+ </table>
+ </div>
+ <div className="px-5 py-3 bg-slate-50/30 border-t border-slate-100 text-[10px] text-slate-500">
+ Every person is traceable to at least one source. Click a LinkedIn badge to open the verified profile.
+ </div>
+ </section>
+ )}
+
+ {/* Ownership + Scale metrics */}
+ {(intelligence?.company?.ownership || intelligence?.company?.scaleMetrics) && (
+ <section className="bg-white rounded-xl overflow-hidden">
+ <div className="p-5 border-b flex items-center bg-slate-50/50">
+ <h3 className="font-bold flex items-center gap-2">
+ <Building2 className="w-5 h-5 text-[#0071E3]"/>
+ Ownership & Scale
+ </h3>
+ </div>
+ <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+ {intelligence.company?.ownership?.type && (
+ <div><p className="text-[10px] font-bold text-slate-400 uppercase">Type</p><p className="text-sm font-bold mt-1">{intelligence.company.ownership.type}</p></div>
+ )}
+ {intelligence.company?.ownership?.parent && (
+ <div><p className="text-[10px] font-bold text-slate-400 uppercase">Parent</p><p className="text-sm font-bold mt-1">{intelligence.company.ownership.parent}</p></div>
+ )}
+ {intelligence.company?.scaleMetrics?.employees && (
+ <div><p className="text-[10px] font-bold text-slate-400 uppercase">Employees</p><p className="text-sm font-bold mt-1">{intelligence.company.scaleMetrics.employees}</p></div>
+ )}
+ {intelligence.company?.scaleMetrics?.customers && (
+ <div><p className="text-[10px] font-bold text-slate-400 uppercase">Customers</p><p className="text-sm font-bold mt-1">{intelligence.company.scaleMetrics.customers}</p></div>
+ )}
+ {intelligence.company?.scaleMetrics?.offices && (
+ <div><p className="text-[10px] font-bold text-slate-400 uppercase">Offices</p><p className="text-sm font-bold mt-1">{intelligence.company.scaleMetrics.offices}</p></div>
+ )}
+ {intelligence.company?.scaleMetrics?.revenue && (
+ <div><p className="text-[10px] font-bold text-slate-400 uppercase">Revenue</p><p className="text-sm font-bold mt-1">{intelligence.company.scaleMetrics.revenue}</p></div>
+ )}
+ {Array.isArray(intelligence.company?.ownership?.investors) && intelligence.company.ownership.investors.length > 0 && (
+ <div className="col-span-2 md:col-span-4">
+ <p className="text-[10px] font-bold text-slate-400 uppercase">Investors</p>
+ <div className="flex flex-wrap gap-2 mt-2">
+ {intelligence.company.ownership.investors.map((inv: string, i: number) => (
+ <span key={i} className="px-3 py-1 bg-slate-100 rounded text-xs font-medium">{inv}</span>
+ ))}
+ </div>
+ </div>
+ )}
+ </div>
+ </section>
+ )}
+
  {/* Strategic Activity Timeline (3/6/12 Months) */}
  <section className="bg-white rounded-xl overflow-hidden ">
  <div className="p-5 border-b flex justify-between items-center bg-slate-50/50">
@@ -927,6 +1074,34 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  >
  <Linkedin className="w-4 h-4"/> View All {intelligence.keyPeople.length} Decision Makers on LinkedIn
  </button>
+ </div>
+ </section>
+ )}
+
+ {/* Citations (evidence panel) */}
+ {Array.isArray(intelligence?.citations) && intelligence.citations.length > 0 && (
+ <section className="bg-white rounded-xl overflow-hidden">
+ <div className="p-5 border-b flex justify-between items-center bg-slate-50/50">
+ <h3 className="font-bold text-sm flex items-center gap-2">
+ <ExternalLink className="w-5 h-5 text-[#0071E3]"/>
+ Sources & Citations
+ </h3>
+ <span className="text-xs text-slate-500">{intelligence.citations.length} sources</span>
+ </div>
+ <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+ {intelligence.citations.slice(0, 20).map((c: any, i: number) => (
+ <div key={i} className="flex items-start gap-2 text-xs">
+ <span className="text-[10px] font-bold text-slate-400 mt-0.5">{c.id || (i + 1)}</span>
+ <div className="flex-1 min-w-0">
+ {c.url ? (
+ <a href={c.url} target="_blank" rel="noreferrer" className="font-bold text-[#0071E3] hover:underline truncate block">{c.source}</a>
+ ) : (
+ <span className="font-bold text-slate-700">{c.source}</span>
+ )}
+ {c.snippet && <p className="text-slate-500 text-[11px] mt-0.5 line-clamp-2">{c.snippet}</p>}
+ </div>
+ </div>
+ ))}
  </div>
  </section>
  )}
@@ -1592,6 +1767,90 @@ export const AccountBriefPage: React.FC<AccountBriefPageProps> = ({
  {activeTab === 'outreach' && (
  <div className="grid grid-cols-12 gap-6">
  <div className="col-span-12 lg:col-span-8 space-y-6">
+ {/* AI-Crafted Personalized Emails (ground-truth, evidence-based) */}
+ {Array.isArray(intelligence?.outreach?.emails) && intelligence.outreach.emails.length > 0 && (
+ <section className="bg-white rounded-xl overflow-hidden">
+ <div className="p-5 border-b flex justify-between items-center bg-slate-50/50">
+ <h3 className="font-bold text-sm flex items-center gap-2">
+ <Mail className="w-5 h-5 text-[#0071E3]"/>
+ Personalized Outreach Drafts
+ <span className="text-[10px] font-bold text-[#0071E3] bg-[#0071E3]/10 px-2 py-0.5 rounded uppercase">{intelligence.outreach.emails.length} drafts</span>
+ </h3>
+ <span className="text-xs text-slate-500">Each email grounded in a verified hook</span>
+ </div>
+ <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
+ {intelligence.outreach.emails.map((em: any, i: number) => (
+ <div key={i} className="p-5 space-y-3">
+ <div className="flex items-center justify-between">
+ <div>
+ <p className="text-sm font-bold text-slate-900">{em.recipientName}</p>
+ <p className="text-[11px] text-slate-500">{em.recipientTitle}</p>
+ </div>
+ {em.recipientEmailGuess && (
+ <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+ em.emailConfidence === 'verified' ? 'bg-emerald-100 text-emerald-700' :
+ em.emailConfidence === 'high' ? 'bg-blue-100 text-blue-700' :
+ em.emailConfidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+ 'bg-slate-100 text-slate-500'
+ }`}>{em.emailConfidence}</span>
+ )}
+ </div>
+ {em.recipientEmailGuess && (
+ <p className="text-[11px] font-mono text-slate-600 truncate">{em.recipientEmailGuess}</p>
+ )}
+ <div className="pt-3 border-t border-slate-100">
+ <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Subject</p>
+ <p className="text-sm font-bold text-slate-900 mt-1">{em.subject}</p>
+ {Array.isArray(em.subjectAlternates) && em.subjectAlternates.length > 0 && (
+ <details className="mt-2">
+ <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-slate-700">{em.subjectAlternates.length} alternate subjects</summary>
+ <ul className="mt-1 space-y-1 text-[11px] text-slate-600 list-disc list-inside">
+ {em.subjectAlternates.map((s: string, j: number) => (<li key={j}>{s}</li>))}
+ </ul>
+ </details>
+ )}
+ </div>
+ <div className="text-[12px] text-slate-700 leading-relaxed whitespace-pre-wrap font-sans bg-slate-50 p-3 rounded-lg max-h-60 overflow-y-auto">
+ {em.body}
+ </div>
+ {Array.isArray(em.hooks) && em.hooks.length > 0 && (
+ <div className="flex flex-wrap gap-1">
+ {em.hooks.map((h: string, j: number) => (
+ <span key={j} className="text-[9px] px-2 py-0.5 bg-[#0071E3]/10 text-[#0071E3] rounded-full font-bold uppercase tracking-widest">{h}</span>
+ ))}
+ </div>
+ )}
+ {em.callToAction && (
+ <div className="flex items-start gap-2 text-[11px] text-slate-600">
+ <Target className="w-3 h-3 text-[#0071E3] mt-0.5 shrink-0"/>
+ <span><span className="font-bold">Ask: </span>{em.callToAction}</span>
+ </div>
+ )}
+ <div className="flex gap-2 pt-2">
+ <button
+ onClick={() => {
+ navigator.clipboard.writeText(`Subject: ${em.subject}\n\n${em.body}`);
+ showNotification('Email copied to clipboard', 'success');
+ }}
+ className="flex-1 py-1.5 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 rounded transition-colors flex items-center justify-center gap-1"
+ >
+ <Copy className="w-3 h-3"/> Copy
+ </button>
+ {em.recipientEmailGuess && (
+ <a
+ href={`mailto:${em.recipientEmailGuess}?subject=${encodeURIComponent(em.subject)}&body=${encodeURIComponent(em.body)}`}
+ className="flex-1 py-1.5 text-[11px] font-bold bg-[#0071E3] text-white hover:bg-[#0071E3]/90 rounded transition-colors flex items-center justify-center gap-1"
+ >
+ <Mail className="w-3 h-3"/> Send
+ </a>
+ )}
+ </div>
+ </div>
+ ))}
+ </div>
+ </section>
+ )}
+
  {/* Outreach Settings & Controls */}
  <section className="bg-white rounded-xl overflow-hidden ">
  <div className="p-4 border-b flex justify-between items-center bg-slate-50/50">
