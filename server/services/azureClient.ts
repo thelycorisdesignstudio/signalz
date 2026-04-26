@@ -59,7 +59,7 @@ async function callSonnet(
   return text;
 }
 
-async function callKimi(
+async function callKimiOnce(
   systemPrompt: string,
   userMessage: string,
   maxTokens: number,
@@ -71,7 +71,10 @@ async function callKimi(
       { role: "system", content: systemPrompt },
       { role: "user", content: userMessage },
     ],
-    max_tokens: maxTokens,
+    // Kimi K2.5 is a reasoning model — chain-of-thought eats tokens before
+    // producing any visible content. Triple the requested budget so it has
+    // room to think AND speak.
+    max_tokens: Math.max(maxTokens * 3, 4000),
   };
   const r = await fetch(kimiUrl, {
     method: "POST",
@@ -82,8 +85,42 @@ async function callKimi(
   if (!r.ok) throw new Error("Kimi HTTP " + r.status);
   const d = await r.json();
   const text = (d.choices?.[0]?.message?.content || "").trim();
-  if (!text) throw new Error("Empty Kimi response");
+  if (!text) {
+    // Some Kimi runs return reasoning_content but empty content. Surface that
+    // so the retry layer above can decide.
+    const reasoning = d.choices?.[0]?.message?.reasoning_content;
+    if (reasoning && typeof reasoning === "string" && reasoning.trim().length > 50) {
+      // Edge case: model only produced reasoning, no answer. Treat as transient.
+      throw new Error("Kimi produced only reasoning, no answer");
+    }
+    throw new Error("Empty Kimi response");
+  }
   return text;
+}
+
+/**
+ * Kimi caller with retry. If Kimi exhausts its tokens on chain-of-thought and
+ * returns empty, we retry once with an even bigger budget. This is the
+ * single biggest reliability win because Kimi is the primary path now that
+ * Sonnet is dead.
+ */
+async function callKimi(
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number,
+): Promise<string> {
+  try {
+    return await callKimiOnce(systemPrompt, userMessage, maxTokens);
+  } catch (err: any) {
+    const msg = String(err?.message || "");
+    // Only retry on the empty-response failure mode. Don't retry rate limits
+    // or HTTP errors — those need different handling.
+    if (msg.includes("Empty Kimi") || msg.includes("only reasoning")) {
+      console.log("[azureClient] kimi empty, retrying with 8x budget");
+      return await callKimiOnce(systemPrompt, userMessage, Math.max(maxTokens * 3, 12000));
+    }
+    throw err;
+  }
 }
 
 async function callGpt(
