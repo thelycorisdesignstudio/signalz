@@ -8,29 +8,27 @@ export interface AzureCallOptions {
   timeoutMs?: number;
 }
 
-// Primary: Anthropic Claude Sonnet 4.6 via Azure AI Foundry
-const sonnetEndpoint = process.env.ANTHROPIC_ENDPOINT || "https://teamsuperorbit-3599-resource.openai.azure.com/anthropic";
-const sonnetKey = process.env.ANTHROPIC_API_KEY || "";
-const sonnetModel = process.env.ANTHROPIC_DEPLOYMENT || "claude-sonnet-4-6-1";
+// Lazy accessors — read env at call time so dotenv.config() has run first
+function getSonnetEndpoint() { return process.env.ANTHROPIC_ENDPOINT || "https://teamsuperorbit-3599-resource.services.ai.azure.com/anthropic"; }
+function getSonnetKey() { return process.env.ANTHROPIC_API_KEY || ""; }
+function getSonnetModel() { return process.env.ANTHROPIC_DEPLOYMENT || "claude-sonnet-4-6-1"; }
 
-// Secondary: Kimi K2.5 via Azure
-const kimiEndpoint = process.env.AZURE_OPENAI_ENDPOINT || "https://vera-resource.services.ai.azure.com";
-const kimiKey = process.env.AZURE_OPENAI_API_KEY || "";
-const kimiModel = process.env.AZURE_OPENAI_DEPLOYMENT || "Kimi-K2.5";
-const kimiUrl = kimiEndpoint + "/models/chat/completions";
+function getKimiEndpoint() { return process.env.AZURE_OPENAI_ENDPOINT || "https://vera-resource.services.ai.azure.com"; }
+function getKimiKey() { return process.env.AZURE_OPENAI_API_KEY || ""; }
+function getKimiModel() { return process.env.AZURE_OPENAI_DEPLOYMENT || "Kimi-K2.5"; }
+function getKimiUrl() { return getKimiEndpoint() + "/models/chat/completions"; }
 
-// Tertiary: GPT-5.2 via Azure Responses API
-const gptEndpoint = process.env.AZURE_FALLBACK_ENDPOINT || "";
-const gptKey = process.env.AZURE_FALLBACK_API_KEY || "";
-const gptModel = process.env.AZURE_FALLBACK_MODEL || "gpt-5.2-codex";
-const gptUrl = gptEndpoint + "/openai/v1/responses";
+function getGptEndpoint() { return process.env.AZURE_FALLBACK_ENDPOINT || ""; }
+function getGptKey() { return process.env.AZURE_FALLBACK_API_KEY || ""; }
+function getGptModel() { return process.env.AZURE_FALLBACK_MODEL || "gpt-5.2-codex"; }
+function getGptUrl() { return getGptEndpoint() + "/openai/v1/responses"; }
 
 export function diagnoseKeys(): { configured: string[]; missing: string[]; anyAvailable: boolean } {
   const configured: string[] = [];
   const missing: string[] = [];
-  if (sonnetKey) configured.push("Sonnet (ANTHROPIC_API_KEY)"); else missing.push("ANTHROPIC_API_KEY");
-  if (kimiKey) configured.push("Kimi (AZURE_OPENAI_API_KEY)"); else missing.push("AZURE_OPENAI_API_KEY");
-  if (gptKey) configured.push("GPT (AZURE_FALLBACK_API_KEY)"); else missing.push("AZURE_FALLBACK_API_KEY");
+  if (getSonnetKey()) configured.push("Sonnet (ANTHROPIC_API_KEY)"); else missing.push("ANTHROPIC_API_KEY");
+  if (getKimiKey()) configured.push("Kimi (AZURE_OPENAI_API_KEY)"); else missing.push("AZURE_OPENAI_API_KEY");
+  if (getGptKey()) configured.push("GPT (AZURE_FALLBACK_API_KEY)"); else missing.push("AZURE_FALLBACK_API_KEY");
   return { configured, missing, anyAvailable: configured.length > 0 };
 }
 
@@ -39,18 +37,19 @@ async function callSonnet(
   userMessage: string,
   maxTokens: number,
 ): Promise<string> {
-  if (!sonnetKey) throw new Error("Sonnet key missing");
+  const key = getSonnetKey();
+  if (!key) throw new Error("Sonnet key missing");
   const body = {
-    model: sonnetModel,
+    model: getSonnetModel(),
     max_tokens: maxTokens,
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   };
-  const r = await fetch(sonnetEndpoint + "/v1/messages", {
+  const r = await fetch(getSonnetEndpoint() + "/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": sonnetKey,
+      "x-api-key": key,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify(body),
@@ -73,21 +72,19 @@ async function callKimiOnce(
   userMessage: string,
   maxTokens: number,
 ): Promise<string> {
-  if (!kimiKey) throw new Error("Kimi key missing");
+  const key = getKimiKey();
+  if (!key) throw new Error("Kimi key missing");
   const body = {
-    model: kimiModel,
+    model: getKimiModel(),
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userMessage },
     ],
-    // Kimi K2.5 is a reasoning model — chain-of-thought eats tokens before
-    // producing any visible content. Triple the requested budget so it has
-    // room to think AND speak.
     max_tokens: Math.max(maxTokens * 3, 4000),
   };
-  const r = await fetch(kimiUrl, {
+  const r = await fetch(getKimiUrl(), {
     method: "POST",
-    headers: { "Content-Type": "application/json", "api-key": kimiKey },
+    headers: { "Content-Type": "application/json", "api-key": key },
     body: JSON.stringify(body),
   });
   if (r.status === 429) throw new Error("KIMI_RATE_LIMITED");
@@ -137,16 +134,18 @@ async function callGpt(
   userMessage: string,
   maxTokens: number,
 ): Promise<string> {
-  if (!gptEndpoint || !gptKey) throw new Error("GPT not configured");
+  const endpoint = getGptEndpoint();
+  const key = getGptKey();
+  if (!endpoint || !key) throw new Error("GPT not configured");
   const body = {
-    model: gptModel,
+    model: getGptModel(),
     input: userMessage,
     instructions: systemPrompt,
     max_output_tokens: maxTokens,
   };
-  const r = await fetch(gptUrl, {
+  const r = await fetch(getGptUrl(), {
     method: "POST",
-    headers: { "Content-Type": "application/json", "api-key": gptKey },
+    headers: { "Content-Type": "application/json", "api-key": key },
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error("GPT HTTP " + r.status);

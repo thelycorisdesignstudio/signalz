@@ -24,25 +24,34 @@ import { Sequence } from "./models/Sequence.js";
 
 dotenv.config();
 
-async function connectDB(retries = 5) {
+async function connectDB(retries = 3) {
   const uri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/signalz";
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+      await mongoose.connect(uri, { serverSelectionTimeoutMS: 3000 });
       console.log("[db] Connected to MongoDB at", uri);
       return;
     } catch (err: any) {
       console.error(`[db] MongoDB connection attempt ${attempt}/${retries} failed:`, err.message);
       if (attempt < retries) {
-        console.log(`[db] Retrying in 3 seconds...`);
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise(r => setTimeout(r, 2000));
       }
     }
   }
-  console.error("[db] All connection attempts failed. Make sure MongoDB is running.");
-  console.error("[db] Install: https://www.mongodb.com/try/download/community");
-  console.error("[db] Or set MONGODB_URI in .env to a MongoDB Atlas connection string.");
-  process.exit(1);
+  console.log("[db] Local MongoDB not available. Starting in-memory MongoDB...");
+  try {
+    const { MongoMemoryServer } = await import("mongodb-memory-server");
+    const mongod = await MongoMemoryServer.create();
+    const memUri = mongod.getUri();
+    await mongoose.connect(memUri);
+    console.log("[db] Connected to in-memory MongoDB at", memUri);
+    console.log("[db] NOTE: Data will not persist across restarts. Install MongoDB or use Atlas for persistence.");
+  } catch (memErr: any) {
+    console.error("[db] In-memory MongoDB also failed:", memErr.message);
+    console.error("[db] Install MongoDB: https://www.mongodb.com/try/download/community");
+    console.error("[db] Or set MONGODB_URI in .env to a MongoDB Atlas connection string.");
+    process.exit(1);
+  }
 }
 
 async function startServer() {
