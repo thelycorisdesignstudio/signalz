@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
 import { 
   LineChart, 
@@ -30,6 +25,8 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { LoginPage } from './components/LoginPage';
+import { SignUpPage } from './components/SignUpPage';
+import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ProfileSetupPage } from './components/ProfileSetupPage';
 import { DashboardPage } from './components/DashboardPage';
 import { AccountBriefPage } from './components/AccountBriefPage';
@@ -736,8 +733,22 @@ const Footer = ({ onNavigate }: { onNavigate: (view: any) => void }) => (
 import { ComingSoonPage } from './components/ComingSoonPage';
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'login' | 'profile-setup' | 'dashboard' | 'account-brief' | 'my-profile' | 'watchlist' | 'features' | 'solutions' | 'pricing' | 'resources' | 'intent-data' | 'lead-scoring' | 'api-access' | 'integrations' | 'about-us' | 'careers' | 'partners' | 'contact' | 'privacy-policy' | 'terms-of-service' | 'gdpr-compliance' | 'status' | 'cookies' | 'accounts' | 'leads' | 'sequences' | 'settings' | 'help'>('landing');
+  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'forgot-password' | 'profile-setup' | 'dashboard' | 'account-brief' | 'my-profile' | 'watchlist' | 'features' | 'solutions' | 'pricing' | 'resources' | 'intent-data' | 'lead-scoring' | 'api-access' | 'integrations' | 'about-us' | 'careers' | 'partners' | 'contact' | 'privacy-policy' | 'terms-of-service' | 'gdpr-compliance' | 'status' | 'cookies' | 'accounts' | 'leads' | 'sequences' | 'settings' | 'help'>(() => {
+    return localStorage.getItem('signalz_token') ? 'dashboard' : 'landing';
+  });
   const [selectedAccount, setSelectedAccount] = useState<string>('Aramco');
+
+  const handleAuthSuccess = (token: string, user: any) => {
+    localStorage.setItem('signalz_token', token);
+    if (user) localStorage.setItem('signalz_user', JSON.stringify(user));
+    setView(user?.name ? 'dashboard' : 'profile-setup');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('signalz_token');
+    localStorage.removeItem('signalz_user');
+    setView('landing');
+  };
 
   const commonNavProps = {
     onNavigateDashboard: () => setView('dashboard'),
@@ -748,11 +759,38 @@ export default function App() {
     onNavigateSettings: () => setView('settings'),
     onNavigateHelp: () => setView('help'),
     onNavigateAccounts: () => setView('accounts'),
-    onLogout: () => setView('landing')
+    onLogout: handleLogout
   };
 
   if (view === 'login') {
-    return <LoginPage onBack={() => setView('landing')} />;
+    return (
+      <LoginPage
+        onBack={() => setView('landing')}
+        onLogin={handleAuthSuccess}
+        onSignUp={() => setView('signup')}
+        onForgotPassword={() => setView('forgot-password')}
+      />
+    );
+  }
+
+  if (view === 'signup') {
+    return (
+      <SignUpPage
+        onBack={() => setView('landing')}
+        onLogin={() => setView('login')}
+        onSignUp={handleAuthSuccess}
+      />
+    );
+  }
+
+  if (view === 'forgot-password') {
+    return (
+      <ForgotPasswordPage
+        onBack={() => setView('landing')}
+        onLogin={() => setView('login')}
+        onResetComplete={handleAuthSuccess}
+      />
+    );
   }
 
   if (view === 'profile-setup') {
@@ -772,19 +810,19 @@ export default function App() {
   }
 
   if (view === 'features') {
-    return <FeaturesPage onBack={() => setView('landing')} onGetStarted={() => setView('dashboard')} />;
+    return <FeaturesPage onBack={() => setView('landing')} onGetStarted={() => setView('signup')} />;
   }
 
   if (view === 'solutions') {
-    return <SolutionsPage onBack={() => setView('landing')} onGetStarted={() => setView('dashboard')} />;
+    return <SolutionsPage onBack={() => setView('landing')} onGetStarted={() => setView('signup')} />;
   }
 
   if (view === 'pricing') {
-    return <PricingPage onBack={() => setView('landing')} onGetStarted={() => setView('dashboard')} />;
+    return <PricingPage onBack={() => setView('landing')} onGetStarted={() => setView('signup')} />;
   }
 
   if (view === 'resources') {
-    return <ResourcesPage onBack={() => setView('landing')} onGetStarted={() => setView('dashboard')} />;
+    return <ResourcesPage onBack={() => setView('landing')} onGetStarted={() => setView('signup')} />;
   }
 
   if (view === 'account-brief') {
@@ -1384,9 +1422,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f6f6f8] text-slate-900 selection:bg-primary/20">
-      <Navbar onLogin={() => setView('login')} onGetStarted={() => setView('dashboard')} onNavigate={(v) => setView(v)} />
+      <Navbar onLogin={() => setView('login')} onGetStarted={() => setView('signup')} onNavigate={(v) => setView(v)} />
       <main>
-        <LandingPage onGetStarted={() => setView('dashboard')} onNavigate={(v) => setView(v)} />
+        <LandingPage onGetStarted={() => setView('signup')} onNavigate={(v) => setView(v)} />
       </main>
       <Footer onNavigate={(v) => setView(v)} />
     </div>

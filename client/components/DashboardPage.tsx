@@ -293,7 +293,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           name: topPerson?.name || searchResult.company?.name,
           title: topPerson?.title || 'Key Contact',
           company: searchResult.company?.name,
-          email: '',
+          email: topPerson?.email || '',
           linkedin: topPerson?.linkedin || '',
           score: leadScore?.score || 50,
           status: 'New',
