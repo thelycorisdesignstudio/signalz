@@ -23,16 +23,25 @@ import { Sequence } from "./models/Sequence.js";
 
 dotenv.config();
 
-async function connectDB() {
+async function connectDB(retries = 5) {
   const uri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/signalz";
-  try {
-    await mongoose.connect(uri);
-    console.log("[db] Connected to MongoDB at", uri);
-  } catch (err: any) {
-    console.error("[db] MongoDB connection failed:", err.message);
-    console.log("[db] Make sure MongoDB is running. Install: https://www.mongodb.com/try/download/community");
-    process.exit(1);
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+      console.log("[db] Connected to MongoDB at", uri);
+      return;
+    } catch (err: any) {
+      console.error(`[db] MongoDB connection attempt ${attempt}/${retries} failed:`, err.message);
+      if (attempt < retries) {
+        console.log(`[db] Retrying in 3 seconds...`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
   }
+  console.error("[db] All connection attempts failed. Make sure MongoDB is running.");
+  console.error("[db] Install: https://www.mongodb.com/try/download/community");
+  console.error("[db] Or set MONGODB_URI in .env to a MongoDB Atlas connection string.");
+  process.exit(1);
 }
 
 async function startServer() {

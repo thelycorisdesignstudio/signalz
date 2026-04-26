@@ -55,6 +55,40 @@ export const MyProfilePage: React.FC<MyProfilePageProps> = ({
   const [isConnecting, setIsConnecting] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  const storedProfile = (() => {
+    try { return JSON.parse(localStorage.getItem('signalz_profile') || '{}'); } catch { return {}; }
+  })();
+  const storedUser = (() => {
+    try { return JSON.parse(localStorage.getItem('signalz_user') || '{}'); } catch { return {}; }
+  })();
+
+  const [fullName, setFullName] = useState(storedProfile.name || storedUser.name || '');
+  const [jobTitle, setJobTitle] = useState(storedProfile.role || storedUser.role || '');
+  const [emailAddr, setEmailAddr] = useState(storedProfile.email || storedUser.email || '');
+  const [phone, setPhone] = useState('');
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    const existing = storedProfile;
+    const updated = { ...existing, name: fullName, role: jobTitle, email: emailAddr };
+    localStorage.setItem('signalz_profile', JSON.stringify(updated));
+    const token = localStorage.getItem('signalz_token');
+    if (token) {
+      try {
+        await fetch('/api/auth/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ name: fullName, role: jobTitle }),
+        });
+      } catch {}
+    }
+    setSaving(false);
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 3000);
+  };
 
   const handleConnect = async () => {
     if (!linkedinUrl) return;
@@ -108,9 +142,14 @@ export const MyProfilePage: React.FC<MyProfilePageProps> = ({
             <button className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
               <Bell className="w-5 h-5" />
             </button>
-            <button className="bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center gap-2">
-              <Save className="w-4 h-4" />
-              Save Changes
+            <button
+              onClick={handleSaveProfile}
+              disabled={saving}
+              className="text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-colors flex items-center gap-2"
+              style={{ background: profileSaved ? '#34c759' : '#0071E3' }}
+            >
+              {saving ? <Save className="w-4 h-4 animate-spin" /> : profileSaved ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              {saving ? 'Saving...' : profileSaved ? 'Saved!' : 'Save Changes'}
             </button>
           </div>
         </header>
@@ -142,19 +181,19 @@ export const MyProfilePage: React.FC<MyProfilePageProps> = ({
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Full Name</label>
-                      <input type="text" defaultValue="Alex Rivera" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
+                      <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your Name" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Job Title</label>
-                      <input type="text" defaultValue="Senior Account Executive" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
+                      <input type="text" value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="Your Job Title" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Email Address</label>
-                      <input type="email" defaultValue="alex.rivera@signalz.ai" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
+                      <input type="email" value={emailAddr} onChange={e => setEmailAddr(e.target.value)} placeholder="you@company.com" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Phone Number</label>
-                      <input type="tel" defaultValue="+1 (555) 019-2834" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
+                      <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 (555) 000-0000" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
                     </div>
                   </div>
                 </div>

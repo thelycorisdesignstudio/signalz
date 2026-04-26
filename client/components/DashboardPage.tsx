@@ -798,7 +798,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     )}
                   </div>
 
-                  {/* Outreach Email */}
+                  {/* Outreach Emails - All Drafts */}
                   <div className="lg:col-span-3 bg-[#1D1D1F] rounded-3xl p-10 text-white relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-12 opacity-5">
                       <Mail className="w-48 h-48" />
@@ -810,60 +810,72 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             <MessageSquare className="w-7 h-7 text-[#0071E3]" />
                           </div>
                           <div>
-                            <h3 className="text-2xl font-black">AI Outreach Draft</h3>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Personalized for {searchResult.company?.name}</p>
+                            <h3 className="text-2xl font-black">AI Outreach Drafts</h3>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                              {(searchResult.outreach?.emails || []).length} personalized {(searchResult.outreach?.emails || []).length === 1 ? 'email' : 'emails'} for {searchResult.company?.name}
+                            </p>
                           </div>
-                        </div>
-                        <div className="flex gap-3">
-                          <button className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all">
-                            <Mail className="w-4 h-4 text-blue-400" /> Connect Outlook
-                          </button>
-                          <button className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all">
-                            <Mail className="w-4 h-4 text-red-400" /> Connect Gmail
-                          </button>
                         </div>
                       </div>
-                      <div className="space-y-5 max-w-4xl">
-                        <div className="flex items-center gap-4 py-3 border-b border-white/10">
-                          <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20">To:</span>
-                          <span className="text-sm font-bold">
-                            {(() => {
-                              const e = searchResult.outreach?.emails?.[0];
-                              if (!e) return searchResult.suggestedEmail?.recipient || 'Recipient not identified';
-                              const parts = [e.recipientName, e.recipientTitle].filter(Boolean).join(', ');
-                              const addr = e.recipientEmailGuess || e.email;
-                              if (parts && addr) return parts + ' <' + addr + '>';
-                              return parts || addr || 'Recipient not identified';
-                            })()}
-                          </span>
+                      {(searchResult.outreach?.emails || []).length === 0 ? (
+                        <div className="bg-white/5 rounded-2xl p-8 text-center">
+                          <Mail className="w-8 h-8 text-slate-500 mx-auto mb-3" />
+                          <p className="text-sm font-medium text-slate-400">Email drafts not yet generated. Re-run research to produce outreach drafts.</p>
                         </div>
-                        <div className="flex items-center gap-4 py-3 border-b border-white/10">
-                          <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20">Subject:</span>
-                          <span className="text-sm font-bold">{searchResult.outreach?.emails?.[0]?.subject || searchResult.suggestedEmail?.subject || 'Subject not available'}</span>
-                        </div>
-                        <div className="flex items-start gap-4">
-                          <span className="text-xs font-black text-slate-400 uppercase tracking-widest w-20 mt-1">Body:</span>
-                          <div className="flex-1 bg-white/5 rounded-2xl p-6">
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium text-slate-200">
-                              {searchResult.outreach?.emails?.[0]?.body || searchResult.suggestedEmail?.body || 'Email draft not yet generated. Re-run research to produce a draft.'}
-                            </p>
-                            <div className="mt-6 flex flex-wrap gap-3">
-                              <button onClick={() => navigator.clipboard.writeText(searchResult.outreach?.emails?.[0]?.body || searchResult.suggestedEmail?.body || "")}
-                                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all">
-                                <Copy className="w-3 h-3" /> Copy Draft
-                              </button>
-                              <button onClick={() => onSelectCompany(searchResult.company?.name)}
-                                className="flex items-center gap-2 px-4 py-2 bg-white text-[#1D1D1F] hover:bg-slate-100 rounded-xl text-xs font-bold transition-all">
-                                <Brain className="w-3 h-3" /> Deep Research
-                              </button>
-                              <button onClick={() => addToLeads(searchResult.company?.name)}
-                                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all">
-                                <Users className="w-3 h-3" />
-                                {leads.includes(searchResult.company?.name) ? 'In Leads' : 'Add to Leads'}
-                              </button>
+                      ) : (
+                        <div className="space-y-6">
+                          {(searchResult.outreach?.emails || []).map((emailDraft: any, idx: number) => (
+                            <div key={idx} className="bg-white/5 rounded-2xl p-6">
+                              <div className="flex items-center gap-3 mb-4">
+                                <div className="w-8 h-8 rounded-full bg-[#0071E3] flex items-center justify-center text-xs font-black">{idx + 1}</div>
+                                <div>
+                                  <p className="text-sm font-bold">{emailDraft.recipientName || 'Contact'}</p>
+                                  <p className="text-xs text-slate-400">{emailDraft.recipientTitle || ''} {emailDraft.recipientEmailGuess || emailDraft.email ? `• ${emailDraft.recipientEmailGuess || emailDraft.email}` : ''}</p>
+                                </div>
+                                {emailDraft.emailConfidence && (
+                                  <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10">{emailDraft.emailConfidence}</span>
+                                )}
+                              </div>
+                              <div className="border-t border-white/10 pt-4 space-y-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest w-16">Subject:</span>
+                                  <span className="text-sm font-bold">{emailDraft.subject || 'No subject'}</span>
+                                </div>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium text-slate-200 mt-2">
+                                  {emailDraft.body || 'Draft not available'}
+                                </p>
+                                {emailDraft.hooks && emailDraft.hooks.length > 0 && (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {emailDraft.hooks.map((hook: string, hi: number) => (
+                                      <span key={hi} className="px-3 py-1 bg-[#0071E3]/20 text-[#0071E3] rounded-full text-[10px] font-bold">{hook}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="mt-4 flex gap-2">
+                                <button onClick={() => navigator.clipboard.writeText(emailDraft.body || "")}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all">
+                                  <Copy className="w-3 h-3" /> Copy
+                                </button>
+                                <button onClick={() => navigator.clipboard.writeText(`Subject: ${emailDraft.subject}\n\n${emailDraft.body}`)}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all">
+                                  <Mail className="w-3 h-3" /> Copy Full Email
+                                </button>
+                              </div>
                             </div>
-                          </div>
+                          ))}
                         </div>
+                      )}
+                      <div className="mt-6 flex flex-wrap gap-3">
+                        <button onClick={() => onSelectCompany(searchResult.company?.name)}
+                          className="flex items-center gap-2 px-4 py-2 bg-white text-[#1D1D1F] hover:bg-slate-100 rounded-xl text-xs font-bold transition-all">
+                          <Brain className="w-3 h-3" /> Deep Research
+                        </button>
+                        <button onClick={() => addToLeads(searchResult.company?.name)}
+                          className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all">
+                          <Users className="w-3 h-3" />
+                          {leads.includes(searchResult.company?.name) ? 'In Leads' : 'Add to Leads'}
+                        </button>
                       </div>
                     </div>
                   </div>

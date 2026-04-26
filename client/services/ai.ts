@@ -72,7 +72,43 @@ function adaptIntelligence(raw: any): any {
 
 export async function getAccountIntelligence(query: string, _recentSignals: any[] = []) {
   try {
-    const text = await callAI(query, true);
+    let userProfile: any = undefined;
+    try {
+      const stored = localStorage.getItem('signalz_profile');
+      if (stored) {
+        const p = JSON.parse(stored);
+        if (p.name || p.company || p.valueLine) {
+          userProfile = {
+            senderName: p.name,
+            senderTitle: p.role,
+            senderCompany: p.company,
+            valueLine: p.valueLine,
+            outreachTone: p.outreachTone,
+            mission: p.mission,
+          };
+        }
+      }
+    } catch {}
+
+    const response = await fetch("/api/ai/intelligence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, jsonMode: true, userProfile })
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`AI error ${response.status}: ${errText}`);
+    }
+    const data = await response.json() as any;
+    let text = "";
+    if (data.output) {
+      const messageItem = data.output.find((item: any) => item.type === 'message');
+      if (messageItem?.content) {
+        const textContent = messageItem.content.find((c: any) => c.type === 'output_text');
+        text = textContent?.text || "";
+      }
+    }
+    if (!text) text = data.choices?.[0]?.message?.content || "";
     const parsed = safeJsonParse(text || "{}");
     return adaptIntelligence(parsed);
   } catch (error) {
