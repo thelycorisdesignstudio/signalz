@@ -25,6 +25,15 @@ const gptKey = process.env.AZURE_FALLBACK_API_KEY || "";
 const gptModel = process.env.AZURE_FALLBACK_MODEL || "gpt-5.2-codex";
 const gptUrl = gptEndpoint + "/openai/v1/responses";
 
+export function diagnoseKeys(): { configured: string[]; missing: string[]; anyAvailable: boolean } {
+  const configured: string[] = [];
+  const missing: string[] = [];
+  if (sonnetKey) configured.push("Sonnet (ANTHROPIC_API_KEY)"); else missing.push("ANTHROPIC_API_KEY");
+  if (kimiKey) configured.push("Kimi (AZURE_OPENAI_API_KEY)"); else missing.push("AZURE_OPENAI_API_KEY");
+  if (gptKey) configured.push("GPT (AZURE_FALLBACK_API_KEY)"); else missing.push("AZURE_FALLBACK_API_KEY");
+  return { configured, missing, anyAvailable: configured.length > 0 };
+}
+
 async function callSonnet(
   systemPrompt: string,
   userMessage: string,

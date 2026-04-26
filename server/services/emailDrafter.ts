@@ -66,13 +66,93 @@ export async function draftEmails(
   people: EnrichedPerson[],
   sender: SenderProfile,
 ): Promise<EmailDraft[]> {
-  const top3 = people.slice(0, 3);
-  if (top3.length === 0) return [];
-
   const senderName = sender.name || "the Signalz team";
   const senderRole = sender.role || "";
   const senderCompany = sender.company || "Signalz AI";
   const valueLine = sender.valueLine || "We help B2B sellers cut account research from 3 hours to 15 minutes with evidence-backed intelligence.";
+
+  const top3 = people.slice(0, 3);
+
+  // Fallback: when no people were discovered, generate template emails to generic roles
+  if (top3.length === 0) {
+    const genericRecipients = [
+      { name: `Decision Maker at ${company}`, title: "Decision Maker" },
+      { name: `Head of Operations at ${company}`, title: "Head of Operations" },
+    ];
+
+    const activityContext = (strategicActivity || []).slice(0, 3).join("; ");
+    const summarySnippet = (companySummary || "").slice(0, 300);
+
+    const fallbackSys =
+      "You are a writer crafting 2 cold outreach emails for a salesperson at " + senderCompany + ". " +
+      "You are writing to unknown contacts at " + company + " using generic role titles. " +
+      "HARD RULES (violations will be rejected): " +
+      "- Max 120 words per body. " +
+      "- Open with a specific insight about the company drawn from the summary and strategic activity provided. " +
+      "- NEVER use these words: synergies, leverage, best-in-class, game-changer, disrupt, paradigm, circle back, touch base, reach out, pick your brain, move the needle, low-hanging fruit, thought leader. " +
+      "- NEVER use em dashes. Use hyphens. " +
+      "- NEVER use emoji. " +
+      "- ONE concrete ask per email. " +
+      "- Reference " + senderCompany + "'s value in ONE line max: '" + valueLine + "'. " +
+      "- Each email must use a DIFFERENT angle. " +
+      "- Tone: warm, specific, curious, human. " +
+      "For each email provide: subject (<60 chars), 3 subjectAlternates, body, hooks (3 phrases), callToAction. " +
+      "Return JSON: {\"emails\":[{recipientName,recipientTitle,subject,subjectAlternates:[],body,hooks:[],callToAction}]}";
+
+    const fallbackUser = JSON.stringify({
+      company,
+      companySummary: summarySnippet,
+      strategicActivity: activityContext,
+      recipients: genericRecipients,
+      sender: { name: senderName, role: senderRole, company: senderCompany, valueLine },
+    });
+
+    let fallbackParsed: any;
+    try {
+      fallbackParsed = await callAzureJson(fallbackSys, fallbackUser, { maxTokens: 2000, timeoutMs: 60000 });
+    } catch (e: any) {
+      console.log("[emailDrafter] fallback generation failed: " + e.message);
+      // Last-resort static templates
+      return genericRecipients.map((r) => ({
+        recipientName: r.name,
+        recipientTitle: r.title,
+        recipientEmailGuess: null,
+        emailConfidence: "none",
+        subject: `A quick note for ${r.title} at ${company}`,
+        subjectAlternates: [],
+        body: `Hi,\n\nI have been following ${company}'s recent moves${activityContext ? " - particularly around " + activityContext.split(";")[0].trim() : ""}. ${valueLine}\n\nWorth 15 minutes next week to compare notes?\n\nBest,\n${senderName}`,
+        hooks: ["company-activity", "value-prop", "time-bound ask"],
+        callToAction: "15 min call next week",
+      }));
+    }
+
+    const fallbackEmails = Array.isArray(fallbackParsed?.emails) ? fallbackParsed.emails : [];
+    return genericRecipients.map((r, i) => {
+      const raw = fallbackEmails[i] || {};
+      let body = sanitize(raw.body || `Hi,\n\nI have been following ${company}. ${valueLine}\n\nWorth 15 minutes next week?\n\nBest,\n${senderName}`);
+      let subject = sanitize(raw.subject || `A quick note for ${r.title} at ${company}`);
+
+      const banned = containsBanned(body);
+      if (banned.length > 0) {
+        for (const b of banned) {
+          body = body.replace(new RegExp(b + "[a-z]*", "gi"), "");
+        }
+        body = body.replace(/\s{2,}/g, " ").trim();
+      }
+
+      return {
+        recipientName: raw.recipientName || r.name,
+        recipientTitle: raw.recipientTitle || r.title,
+        recipientEmailGuess: null,
+        emailConfidence: "none",
+        subject,
+        subjectAlternates: Array.isArray(raw.subjectAlternates) ? raw.subjectAlternates.slice(0, 3).map(sanitize) : [],
+        body,
+        hooks: Array.isArray(raw.hooks) ? raw.hooks.slice(0, 3).map(sanitize) : ["company-insight", "value-prop", "time-bound ask"],
+        callToAction: sanitize(raw.callToAction || "15 min call next week"),
+      };
+    });
+  }
 
   const peopleBlob = top3.map((p, i) => ({
     index: i,

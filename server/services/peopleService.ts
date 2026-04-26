@@ -34,6 +34,174 @@ function normName(n: string): string {
   return n.toLowerCase().replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
 }
 
+// --- Title keywords used for regex-based fallback extraction ---
+const TITLE_KEYWORDS_RE =
+  /\b(CEO|CTO|CFO|COO|CIO|CMO|CISO|CPO|CRO|CLO|VP|Vice\s+President|Director|Head\s+of|President|Founder|Co-Founder|Chief\s+\w+\s*Officer|Managing\s+Director|General\s+Manager|Partner|Principal|Chairman|Chairwoman|Chairperson|SVP|EVP)\b/i;
+
+/**
+ * Validate a candidate name: must be 2+ words, each word starts with uppercase,
+ * no numbers, no URLs, not overly long.
+ */
+function isValidPersonName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  // Must be 2+ words
+  const words = trimmed.split(/\s+/);
+  if (words.length < 2 || words.length > 5) return false;
+  // No digits or URLs
+  if (/\d/.test(trimmed) || /https?:/.test(trimmed)) return false;
+  // Each word should start with uppercase (allow "de", "von", "van", etc.)
+  const lowerParticles = new Set(["de", "del", "der", "van", "von", "la", "le", "da", "di", "el", "al"]);
+  for (const w of words) {
+    if (lowerParticles.has(w.toLowerCase())) continue;
+    if (!/^[A-Z]/.test(w)) return false;
+  }
+  // Total length sanity
+  if (trimmed.length < 4 || trimmed.length > 60) return false;
+  return true;
+}
+
+/**
+ * Regex-based fallback: extract people from HTML/text without any AI call.
+ * Looks for common leadership-page patterns and returns RealPerson objects.
+ */
+function extractPeopleFromHtmlRegex(
+  html: string,
+  company: string,
+  sourceLabel: string,
+  sourceUrl: string,
+): RealPerson[] {
+  if (!html || html.length < 50) return [];
+
+  const linkedinUrls = extractLinkedInUrls(html);
+
+  // Strip tags helper: removes HTML tags, collapses whitespace
+  const stripTags = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+
+  const results: RealPerson[] = [];
+  const seenNames = new Set<string>();
+
+  function addCandidate(name: string, title: string, snippet: string) {
+    const cleanName = stripTags(name).trim();
+    const cleanTitle = stripTags(title).trim();
+    if (!isValidPersonName(cleanName)) return;
+    if (!TITLE_KEYWORDS_RE.test(cleanTitle)) return;
+    const key = normName(cleanName);
+    if (seenNames.has(key)) return;
+    seenNames.add(key);
+
+    // Try to find a LinkedIn URL near this person's name in the source
+    let linkedin: string | null = null;
+    let linkedinStatus: "verified" | "inferred" | "not_found" = "not_found";
+    const nameIdx = html.toLowerCase().indexOf(cleanName.toLowerCase());
+    if (nameIdx >= 0) {
+      const window = html.substring(Math.max(0, nameIdx - 500), Math.min(html.length, nameIdx + 500));
+      const linksNear = extractLinkedInUrls(window);
+      if (linksNear.length > 0) {
+        linkedin = linksNear[0];
+        linkedinStatus = "verified";
+      }
+    }
+
+    results.push({
+      name: cleanName,
+      title: cleanTitle,
+      linkedin,
+      linkedinStatus,
+      evidence: [{
+        source: sourceLabel,
+        url: sourceUrl,
+        snippet: stripTags(snippet).slice(0, 300),
+        retrievedAt: new Date().toISOString(),
+      }],
+    });
+  }
+
+  // --- Pattern 1: Name in heading (h2/h3/h4) followed by title in p/span/div ---
+  const headingTitleRe = /<h[2-4][^>]*>([\s\S]*?)<\/h[2-4]>\s*(?:<[^>]*>\s*)*<(?:p|span|div)[^>]*>([\s\S]*?)<\/(?:p|span|div)>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = headingTitleRe.exec(html)) !== null) {
+    const nameCandidate = stripTags(m[1]);
+    const titleCandidate = stripTags(m[2]);
+    if (TITLE_KEYWORDS_RE.test(titleCandidate)) {
+      addCandidate(nameCandidate, titleCandidate, m[0]);
+    }
+  }
+
+  // --- Pattern 2: Schema.org Person markup ---
+  // Matches itemtype="http://schema.org/Person" blocks or JSON-LD
+  const schemaPersonRe = /<[^>]+itemtype=["']https?:\/\/schema\.org\/Person["'][^>]*>([\s\S]*?)<\/(?:div|section|article|li|span)>/gi;
+  while ((m = schemaPersonRe.exec(html)) !== null) {
+    const block = m[1];
+    const nameMatch = /itemprop=["']name["'][^>]*>([^<]+)/i.exec(block);
+    const titleMatch = /itemprop=["']jobTitle["'][^>]*>([^<]+)/i.exec(block);
+    if (nameMatch && titleMatch) {
+      addCandidate(nameMatch[1], titleMatch[1], m[0]);
+    }
+  }
+
+  // Also try JSON-LD Person blocks
+  const jsonLdRe = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  while ((m = jsonLdRe.exec(html)) !== null) {
+    try {
+      const data = JSON.parse(m[1]);
+      const persons = Array.isArray(data) ? data : (data["@graph"] || [data]);
+      for (const item of persons) {
+        if (item?.["@type"] === "Person" && item.name && item.jobTitle) {
+          addCandidate(item.name, item.jobTitle, "JSON-LD: " + item.name + " - " + item.jobTitle);
+        }
+      }
+    } catch { /* ignore malformed JSON-LD */ }
+  }
+
+  // --- Pattern 3: LinkedIn profile links with visible name text ---
+  const linkedinLinkRe = /<a[^>]+href=["'](https?:\/\/(?:www\.)?linkedin\.com\/in\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  while ((m = linkedinLinkRe.exec(html)) !== null) {
+    const linkedinUrl = m[1];
+    const linkText = stripTags(m[2]);
+    if (isValidPersonName(linkText)) {
+      // Look around the link for a title
+      const surroundStart = Math.max(0, m.index - 300);
+      const surroundEnd = Math.min(html.length, m.index + m[0].length + 300);
+      const surrounding = html.substring(surroundStart, surroundEnd);
+      const titleInSurrounding = TITLE_KEYWORDS_RE.exec(stripTags(surrounding));
+      if (titleInSurrounding) {
+        // Extract a reasonable title chunk around the keyword
+        const fullText = stripTags(surrounding);
+        const kwIdx = fullText.indexOf(titleInSurrounding[0]);
+        // grab up to 60 chars around the keyword for the title
+        const titleChunk = fullText.substring(Math.max(0, kwIdx - 20), Math.min(fullText.length, kwIdx + 40)).trim();
+        addCandidate(linkText, titleChunk, m[0]);
+      }
+    }
+  }
+
+  // --- Pattern 4: "Name - Title" or "Name, Title" in plain text (common in search snippets and pages) ---
+  // This pattern works on the stripped text to catch both HTML and plain-text snippets
+  const plainText = stripTags(html);
+
+  // Pattern: "FirstName LastName - Title with keyword" or "FirstName LastName, Title with keyword"
+  const nameTitleSepRe = /([A-Z][a-z]+(?:\s+(?:de|del|van|von|la|le|da|di))?(?:\s+[A-Z][a-z]+){1,3})\s*[-–—,|]\s*([^.\n;]{5,60})/g;
+  while ((m = nameTitleSepRe.exec(plainText)) !== null) {
+    const nameCandidate = m[1].trim();
+    const titleCandidate = m[2].trim();
+    if (TITLE_KEYWORDS_RE.test(titleCandidate)) {
+      addCandidate(nameCandidate, titleCandidate, m[0]);
+    }
+  }
+
+  // --- Pattern 5: Title keyword followed by name - e.g. "CEO John Smith" or "CEO: John Smith" ---
+  const titleNameRe = /\b(CEO|CTO|CFO|COO|CIO|CMO|President|Founder|Co-Founder|Chairman|Chairwoman)\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/g;
+  while ((m = titleNameRe.exec(plainText)) !== null) {
+    addCandidate(m[2].trim(), m[1].trim(), m[0]);
+  }
+
+  if (results.length > 0) {
+    console.log("[peopleService] Regex fallback extracted " + results.length + " people from " + sourceLabel);
+  }
+  return results;
+}
+
 /**
  * Ask the AI to extract ONLY people explicitly named in the HTML as this company's employees.
  * Hard-coded anti-hallucination contract.
@@ -104,8 +272,8 @@ async function extractPeopleFromHtml(
     }
     return people;
   } catch (e: any) {
-    console.log("[peopleService] HTML extraction failed for " + sourceLabel + ": " + e.message);
-    return [];
+    console.log("[peopleService] AI extraction failed for " + sourceLabel + ": " + e.message + " — trying regex fallback");
+    return extractPeopleFromHtmlRegex(cleaned, company, sourceLabel, sourceUrl);
   }
 }
 

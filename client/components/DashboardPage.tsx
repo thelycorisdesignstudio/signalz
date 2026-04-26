@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './Sidebar';
-import { getAccountIntelligence } from '../services/ai';
+import { getAccountIntelligence, generateEmailDraft, webSearch } from '../services/ai';
 import { ComparePanel } from './ComparePanel';
 import { ActivityFeed } from './ActivityFeed';
 import { addToHistory, getHistory, clearHistory, SearchHistoryItem } from '../utils/searchHistory';
@@ -238,6 +238,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [leadScore, setLeadScore] = useState<{score:number; signals:string[]} | null>(null);
   const [isSavingLead, setIsSavingLead] = useState(false);
   const [leadSaved, setLeadSaved] = useState(false);
+  const [isSearchingSimilar, setIsSearchingSimilar] = useState(false);
+  const [isGeneratingDrafts, setIsGeneratingDrafts] = useState(false);
 
   const loadingSteps = [
     'Scanning company signals...',
@@ -340,6 +342,90 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setSearchResult(null);
     setError(null);
     setChatMessages([]);
+  };
+
+  const handleSearchSimilar = async () => {
+    if (!searchResult?.company?.name || isSearchingSimilar) return;
+    setIsSearchingSimilar(true);
+    try {
+      const companyName = searchResult.company.name;
+      const industry = searchResult.company.industry || '';
+      const query = `companies similar to ${companyName}${industry ? ' in ' + industry : ''} competitors alternatives`;
+      const results = await webSearch(query);
+      // Parse web search results into similar companies format
+      const items = Array.isArray(results?.results) ? results.results : Array.isArray(results) ? results : [];
+      const similarCompanies = items.slice(0, 4).map((item: any) => ({
+        name: item.title?.split(/[|\-:]/)?.[ 0]?.trim() || item.name || 'Unknown',
+        industry: industry,
+        whyApproach: item.snippet || item.description || 'Similar profile identified via web search.',
+      }));
+      if (similarCompanies.length > 0) {
+        setSearchResult((prev: any) => ({ ...prev, similarCompanies }));
+      }
+    } catch (err) {
+      console.error('Similar company search failed:', err);
+    } finally {
+      setIsSearchingSimilar(false);
+    }
+  };
+
+  const handleGenerateDrafts = async () => {
+    if (!searchResult?.company?.name || isGeneratingDrafts) return;
+    setIsGeneratingDrafts(true);
+    try {
+      const companyName = searchResult.company.name;
+      const summary = searchResult.company?.summary || '';
+      const signals = searchResult.company?.recentNews || searchResult.strategicActivity || [];
+      const keyPeople = searchResult.keyPeople || [];
+
+      const drafts: any[] = [];
+      if (keyPeople.length > 0) {
+        // Generate drafts for up to 3 key people
+        for (const person of keyPeople.slice(0, 3)) {
+          const body = await generateEmailDraft(companyName, summary, signals, { name: person.name, role: person.title });
+          drafts.push({
+            recipientName: person.name,
+            recipientTitle: person.title,
+            recipientEmailGuess: person.email || null,
+            emailConfidence: person.emailConfidence || 'low',
+            subject: `A note for ${person.name.split(' ')[0]} at ${companyName}`,
+            body,
+            hooks: ['role-based', 'company-insight', 'value-prop'],
+            callToAction: '15 min call next week',
+          });
+        }
+      } else {
+        // No key people - generate generic role-based drafts
+        const genericRoles = [
+          { name: 'Decision Maker', role: 'Decision Maker' },
+          { name: 'Head of Operations', role: 'Head of Operations' },
+        ];
+        for (const role of genericRoles) {
+          const body = await generateEmailDraft(companyName, summary, signals, { name: role.name, role: role.role });
+          drafts.push({
+            recipientName: `${role.name} at ${companyName}`,
+            recipientTitle: role.role,
+            recipientEmailGuess: null,
+            emailConfidence: 'none',
+            subject: `A quick note for ${role.role} at ${companyName}`,
+            body,
+            hooks: ['company-insight', 'value-prop', 'time-bound ask'],
+            callToAction: '15 min call next week',
+          });
+        }
+      }
+
+      if (drafts.length > 0) {
+        setSearchResult((prev: any) => ({
+          ...prev,
+          outreach: { ...(prev?.outreach || {}), emails: drafts },
+        }));
+      }
+    } catch (err) {
+      console.error('Draft generation failed:', err);
+    } finally {
+      setIsGeneratingDrafts(false);
+    }
   };
 
   const handleChatSubmit = async (e: React.FormEvent) => {
@@ -793,7 +879,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       </div>
                     ) : (
                       <div className="p-8 bg-[#f6f6f8] rounded-2xl text-center">
-                        <p className="text-sm font-medium text-slate-500">No similar companies available yet. Try re-running research.</p>
+                        <Search className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                        <p className="text-sm font-medium text-slate-500 mb-4">No similar companies found in initial research.</p>
+                        <button
+                          onClick={handleSearchSimilar}
+                          disabled={isSearchingSimilar}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0071E3] text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-[#0071E3]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                          {isSearchingSimilar ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Searching...</>
+                          ) : (
+                            <><Search className="w-4 h-4" /> Search Similar Companies</>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -818,9 +916,43 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         </div>
                       </div>
                       {(searchResult.outreach?.emails || []).length === 0 ? (
-                        <div className="bg-white/5 rounded-2xl p-8 text-center">
-                          <Mail className="w-8 h-8 text-slate-500 mx-auto mb-3" />
-                          <p className="text-sm font-medium text-slate-400">Email drafts not yet generated. Re-run research to produce outreach drafts.</p>
+                        <div className="space-y-6">
+                          {/* Show key people and company context even when emails are missing */}
+                          {(searchResult.keyPeople?.length > 0 || searchResult.company?.summary) && (
+                            <div className="bg-white/5 rounded-2xl p-6">
+                              <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Available Context</p>
+                              {searchResult.company?.summary && (
+                                <p className="text-sm text-slate-300 leading-relaxed mb-4">{searchResult.company.summary}</p>
+                              )}
+                              {searchResult.keyPeople?.length > 0 && (
+                                <div className="space-y-2">
+                                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Key People Discovered</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {searchResult.keyPeople.slice(0, 5).map((person: any, pi: number) => (
+                                      <span key={pi} className="px-3 py-1.5 bg-white/10 rounded-full text-xs font-bold">
+                                        {person.name} - {person.title}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div className="bg-white/5 rounded-2xl p-8 text-center">
+                            <Mail className="w-8 h-8 text-slate-500 mx-auto mb-3" />
+                            <p className="text-sm font-medium text-slate-400 mb-4">Email drafts not yet generated.</p>
+                            <button
+                              onClick={handleGenerateDrafts}
+                              disabled={isGeneratingDrafts}
+                              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0071E3] text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-[#0071E3]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            >
+                              {isGeneratingDrafts ? (
+                                <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+                              ) : (
+                                <><Sparkles className="w-4 h-4" /> Generate Drafts</>
+                              )}
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="space-y-6">

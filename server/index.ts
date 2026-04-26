@@ -8,6 +8,7 @@ import { runResearch } from "./services/researchService.js";
 import { findEmail } from "./services/emailFinder.js";
 import { draftEmails } from "./services/emailDrafter.js";
 import { searchMulti, fetchPageText } from "./services/webSearch.js";
+import { diagnoseKeys } from "./services/azureClient.js";
 
 import authRoutes from "./routes/auth.js";
 
@@ -47,6 +48,19 @@ async function connectDB(retries = 5) {
 async function startServer() {
   await connectDB();
 
+  const keyDiag = diagnoseKeys();
+  if (!keyDiag.anyAvailable) {
+    console.warn("\n╔══════════════════════════════════════════════════════════════╗");
+    console.warn("║  ⚠  NO AI API KEYS CONFIGURED                               ║");
+    console.warn("║  Research will use web-search fallbacks (lower quality).      ║");
+    console.warn("║  Create a .env file from .env.example with your API keys:     ║");
+    console.warn("║    ANTHROPIC_API_KEY, AZURE_OPENAI_API_KEY                    ║");
+    console.warn("╚══════════════════════════════════════════════════════════════╝\n");
+  } else {
+    console.log("[startup] AI models configured: " + keyDiag.configured.join(", "));
+    if (keyDiag.missing.length > 0) console.log("[startup] Missing (optional): " + keyDiag.missing.join(", "));
+  }
+
   const app = express();
   const PORT = parseInt(process.env.PORT || "5000", 10);
 
@@ -62,7 +76,7 @@ async function startServer() {
   });
 
   // --- Health ---
-  app.get("/api/health", (_req, res) => res.json({ status: "ok", version: "3.0-mern" }));
+  app.get("/api/health", (_req, res) => res.json({ status: "ok", version: "3.0-mern", ai: keyDiag }));
 
   // --- Auth ---
   app.use("/api/auth", authRoutes);
