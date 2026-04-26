@@ -233,6 +233,9 @@ async function startServer() {
         enableActivityMining: enableActivityMining !== false,
       });
 
+      // Brief pause before email drafting to avoid Azure rate limits after research
+      await new Promise(r => setTimeout(r, 2000));
+
       try {
         const emails = await draftEmails(
           research.company.name,

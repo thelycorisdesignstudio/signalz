@@ -165,20 +165,22 @@ export async function draftEmails(
   }));
 
   const sys =
-    "You are a writer crafting 3 cold outreach emails for a salesperson at " + senderCompany + ". " +
+    "You are an elite B2B sales copywriter crafting 3 personalized cold outreach emails for a salesperson at " + senderCompany + ". " +
     "You are writing to 3 real people at " + company + ". " +
-    "HARD RULES (violations will be rejected): " +
-    "- Max 150 words per body. " +
-    "- Open with a specific hook tied to the recipient - their recent post, a product they shipped, an award, a talk they gave. If we gave you a bestHook, USE IT. " +
-    "- NEVER use these words: synergies, leverage, best-in-class, game-changer, disrupt, paradigm, circle back, touch base, reach out, pick your brain, move the needle, low-hanging fruit, thought leader. " +
-    "- NEVER use em dashes. Use hyphens. " +
-    "- NEVER use emoji. " +
-    "- ONE concrete ask. Not vague. Something like 'Worth 15 min next Tuesday?' or 'Can I send you the 2-page summary?' or 'Should I introduce you to X?'. " +
-    "- Reference " + senderCompany + "'s value in ONE line max: '" + valueLine + "'. " +
-    "- Each of the 3 emails must use a DIFFERENT hook angle - do not repeat the same opening across people. " +
-    "- Tone: warm, specific, curious, human. Sound like a smart person wrote it. " +
-    "- If we don't have a recent hook for someone, use their role+industry context to craft a thoughtful opener - but never pretend to reference content we don't know about. " +
-    "For each email provide: subject (<60 chars, specific, not 'Quick question'), 3 subjectAlternates, body, hooks (3 short phrases describing angles used), callToAction (the one ask). " +
+    "STRUCTURE for each email (follow this exactly): " +
+    "1. OPENING (1-2 sentences): A specific, researched hook about the recipient or their company. If we provided a bestHook, weave it in naturally. If not, reference something concrete about their role, a recent company move, or industry trend that affects them. " +
+    "2. BRIDGE (2-3 sentences): Connect the hook to a challenge or opportunity they likely face. Show you understand their world. Be specific - mention their industry, their scale, or a trend that affects companies like theirs. " +
+    "3. VALUE (1-2 sentences): Introduce what " + senderCompany + " does and why it matters for them specifically. Value prop: '" + valueLine + "'. Tie it to the challenge you just described. " +
+    "4. ASK (1 sentence): One specific, low-commitment call to action. Not vague. Examples: 'Worth 15 min next Tuesday to walk through how this would work for " + company + "?' or 'Happy to send a 2-page brief showing what we found on your market - want me to?' " +
+    "5. SIGN-OFF: Brief and warm. " +
+    "HARD RULES: " +
+    "- 180-220 words per body (detailed but tight). " +
+    "- NEVER use: synergies, leverage, best-in-class, game-changer, disrupt, paradigm, circle back, touch base, reach out, pick your brain, move the needle, low-hanging fruit, thought leader. " +
+    "- No em dashes (use hyphens). No emoji. " +
+    "- Each of the 3 emails MUST use a completely different angle and hook. " +
+    "- Tone: warm, specific, curious, human. Sound like a smart senior seller, not a template. " +
+    "- If no bestHook was provided, use the recipient's role + company context to write a thoughtful opener. Never pretend to reference content we don't have. " +
+    "For each email provide: subject (<60 chars, specific, not 'Quick question'), 3 subjectAlternates, body, hooks (3 short phrases describing the angles used), callToAction. " +
     "Return JSON: {\"emails\":[{recipientName,recipientTitle,subject,subjectAlternates:[],body,hooks:[],callToAction}]}";
 
   const user = JSON.stringify({
@@ -189,22 +191,34 @@ export async function draftEmails(
     sender: { name: senderName, role: senderRole, company: senderCompany, valueLine },
   });
 
+  const activitySnippets = (strategicActivity || []).slice(0, 3);
+  const summaryShort = (companySummary || "").slice(0, 300);
+
   let parsed: any;
   try {
-    parsed = await callAzureJson(sys, user, { maxTokens: 3000, timeoutMs: 80000 });
+    parsed = await callAzureJson(sys, user, { maxTokens: 4500, timeoutMs: 90000 });
   } catch (e: any) {
     console.log("[emailDrafter] generation failed: " + e.message);
-    return top3.map((p) => ({
-      recipientName: p.name,
-      recipientTitle: p.title,
-      recipientEmailGuess: p.email || null,
-      emailConfidence: p.emailConfidence || "low",
-      subject: `A note for ${p.name.split(" ")[0]}`,
-      subjectAlternates: [],
-      body: `Hi ${p.name.split(" ")[0]},\n\nI work on Signalz, a sales intelligence tool for people researching accounts like ${company}. ${valueLine}\n\nWorth 15 minutes next week?\n\nBest,\n${senderName}`,
-      hooks: ["role-based", "value-prop", "time-bound ask"],
-      callToAction: "15 min call next week",
-    }));
+    const angles = [
+      { hook: "strategic-direction", opener: (p: EnrichedPerson) => `I have been following ${company}'s recent moves${activitySnippets[0] ? " - particularly " + activitySnippets[0] : ""}, and your role as ${p.title} caught my attention.` },
+      { hook: "industry-trend", opener: (p: EnrichedPerson) => `As ${p.title} at ${company}, you are likely navigating some of the same challenges we hear from leaders across the industry${summaryShort ? " - especially around " + summaryShort.split(".")[0].toLowerCase().slice(0, 80) : ""}.` },
+      { hook: "value-alignment", opener: (p: EnrichedPerson) => `${company}'s position in the market${activitySnippets[1] ? " and recent activity around " + activitySnippets[1] : ""} caught our eye, and I wanted to connect with you specifically.` },
+    ];
+    return top3.map((p, i) => {
+      const angle = angles[i % angles.length];
+      const firstName = p.name.split(" ")[0];
+      return {
+        recipientName: p.name,
+        recipientTitle: p.title,
+        recipientEmailGuess: p.email || null,
+        emailConfidence: p.emailConfidence || "low",
+        subject: `${firstName} - a thought on ${company}'s next move`,
+        subjectAlternates: [`For ${firstName}: ${company} and what we are seeing`, `${company}'s trajectory - quick thought`],
+        body: `Hi ${firstName},\n\n${angle.opener(p)}\n\n${valueLine}\n\nWe have been working with companies in similar positions and the patterns we are seeing could be relevant to where ${company} is headed. I put together a short brief on what we found - happy to share it if useful.\n\nWould 15 minutes next week work to walk through it? No pressure either way.\n\nBest,\n${senderName}${senderRole ? "\n" + senderRole + ", " + senderCompany : ""}`,
+        hooks: [angle.hook, "value-prop", "low-commitment ask"],
+        callToAction: "15 min call next week",
+      };
+    });
   }
 
   const drafts: EmailDraft[] = [];
@@ -228,8 +242,8 @@ export async function draftEmails(
       body = body.replace(/\s{2,}/g, " ").trim();
     }
 
-    // Enforce word limit (soft: truncate on sentence boundary if over 180)
-    if (wordCount(body) > 180) {
+    // Enforce word limit (soft: truncate on sentence boundary if over 250)
+    if (wordCount(body) > 250) {
       const sentences = body.split(/(?<=[.!?])\s+/);
       const kept: string[] = [];
       let count = 0;

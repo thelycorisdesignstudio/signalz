@@ -35,18 +35,43 @@ function safeJsonParse(text: string) {
   return {};
 }
 
-/**
- * Adapt new ground-truth schema to fields the existing UI expects
- * (hook, focus, style, influence, priorityRank) so nothing breaks.
- */
+function stripHtml(s: string): string {
+  if (!s) return "";
+  return s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function cleanSnippet(s: string): string {
+  const cleaned = stripHtml(s);
+  if (cleaned.length < 10 || /class=|div>|span>|button>/.test(cleaned)) return "";
+  return cleaned;
+}
+
+function buildHook(p: any, companyName: string): string {
+  if (p.activity?.bestHook) return p.activity.bestHook;
+  if (p.activity?.publicNarrative) return p.activity.publicNarrative.slice(0, 140);
+  const title = p.title || "";
+  const name = p.name?.split(" ")[0] || "this executive";
+  if (title.toLowerCase().includes("ceo") || title.toLowerCase().includes("founder"))
+    return `As ${title} at ${companyName}, ${name} drives the company's strategic direction - a great entry point for executive-level conversations.`;
+  if (title.toLowerCase().includes("cto") || title.toLowerCase().includes("engineering"))
+    return `${name} leads the technical vision at ${companyName} - ideal for discussing technology partnerships and infrastructure.`;
+  if (title.toLowerCase().includes("cfo") || title.toLowerCase().includes("finance"))
+    return `${name} oversees financial strategy at ${companyName} - key for ROI-focused conversations and budget discussions.`;
+  if (title.toLowerCase().includes("coo") || title.toLowerCase().includes("operations"))
+    return `${name} manages operations at ${companyName} - well-positioned to discuss efficiency and process improvements.`;
+  if (title.toLowerCase().includes("marketing") || title.toLowerCase().includes("cmo"))
+    return `${name} leads marketing at ${companyName} - relevant for growth, brand, and demand-gen conversations.`;
+  return `${name}'s role as ${title} at ${companyName} makes them a strong contact for strategic business discussions.`;
+}
+
 function adaptIntelligence(raw: any): any {
   if (!raw || typeof raw !== "object") return raw;
   const out = { ...raw };
+  const companyName = out.company?.name || "";
   if (Array.isArray(out.keyPeople)) {
     out.keyPeople = out.keyPeople.map((p: any, idx: number) => ({
       ...p,
-      // Legacy fields - derive from new data
-      hook: p.activity?.bestHook || p.evidence?.[0]?.snippet?.slice(0, 140) || "",
+      hook: buildHook(p, companyName),
       focus: p.activity?.themes?.slice(0, 2).join(", ") || p.title || "",
       style: p.activity?.tone && p.activity.tone !== "unknown" ? p.activity.tone : "Professional",
       influence: idx === 0 ? "High" : (idx < 3 ? "Medium" : "Standard"),

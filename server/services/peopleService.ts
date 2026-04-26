@@ -61,10 +61,10 @@ function isValidPersonName(name: string): boolean {
   return true;
 }
 
-/**
- * Regex-based fallback: extract people from HTML/text without any AI call.
- * Looks for common leadership-page patterns and returns RealPerson objects.
- */
+function stripTags(s: string): string {
+  return s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+}
+
 function extractPeopleFromHtmlRegex(
   html: string,
   company: string,
@@ -74,9 +74,6 @@ function extractPeopleFromHtmlRegex(
   if (!html || html.length < 50) return [];
 
   const linkedinUrls = extractLinkedInUrls(html);
-
-  // Strip tags helper: removes HTML tags, collapses whitespace
-  const stripTags = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
 
   const results: RealPerson[] = [];
   const seenNames = new Set<string>();
@@ -265,7 +262,7 @@ async function extractPeopleFromHtml(
         evidence: [{
           source: sourceLabel,
           url: sourceUrl,
-          snippet: String(p.snippet).slice(0, 300),
+          snippet: stripTags(String(p.snippet)).slice(0, 300),
           retrievedAt: new Date().toISOString(),
         }],
       });
